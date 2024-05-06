@@ -67,11 +67,13 @@ class ImuObs : public NodeData
             "Gyro Comp Y [rad/s]",
             "Gyro Comp Z [rad/s]",
             "Temperature [°C]",
+            "Air pressure [hPa]",
+            "Altitude NED [m]"
         };
     }
 
     /// @brief Get the amount of descriptors
-    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 20; }
+    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 22; }
 
     /// @brief Returns a vector of data descriptors
     [[nodiscard]] std::vector<std::string> staticDataDescriptors() const override { return GetStaticDataDescriptors(); }
@@ -147,6 +149,12 @@ class ImuObs : public NodeData
         case 19: // Temperature [°C]
             if (temperature.has_value()) { return temperature.value(); }
             break;
+        case 20: // Air Pressure [hPa]
+            if (airPressure.has_value()) { return airPressure.value(); }
+            break;
+        case 21: // Altitude NED [m]
+            if (altitude.has_value()) { return altitude.value(); }
+            break;
         default:
             return std::nullopt;
         }
@@ -172,7 +180,10 @@ class ImuObs : public NodeData
     std::optional<Eigen::Vector3d> accelCompXYZ;
     /// The compensated angular rate measured in units of [rad/s], and given in the platform frame.
     std::optional<Eigen::Vector3d> gyroCompXYZ;
-
+    /// The Baro Pressure in units of [hPa]
+    std::optional<double> airPressure;
+    /// The Baro altitude  in [m] given in NED Frame
+    std::optional<double> altitude;
     /// The IMU temperature measured in units of [Celsius].
     std::optional<double> temperature = 0.0;
 };

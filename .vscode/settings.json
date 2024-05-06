@@ -201,4 +201,5 @@
     ],
     "matched-line-dimmer.opacity": 40,
     "statusBarParam.showNames": true,
+    "C_Cpp.errorSquiggles": "disabled",
 }

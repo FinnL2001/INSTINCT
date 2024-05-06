@@ -262,6 +262,8 @@ class ImuSimulator : public Imu
     /// @param[in] description Description of the data
     /// @return Attitude quaternion n_quat_b or NaN if data not found
     static Eigen::Quaterniond n_getAttitudeQuaternionFromCsvLine_b(const CsvData::CsvLine& line, const std::vector<std::string>& description);
+  
+  
 
     /// Assign a variable that holds the Spline information
     struct

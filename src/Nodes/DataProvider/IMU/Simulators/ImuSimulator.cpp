@@ -20,6 +20,9 @@
 #include "Navigation/Math/Math.hpp"
 #include "Navigation/Transformations/Units.hpp"
 #include "util/Time/TimeBase.hpp"
+#include "Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
+#include "Navigation/Transformations/CoordinateFrames.hpp"
+#include "Navigation/Constants.hpp"
 
 #include "internal/NodeManager.hpp"
 namespace nm = NAV::NodeManager;
@@ -1561,6 +1564,16 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
     // ω_ip_p = p_Quat_b * (ω_ib_b + ω_bp_b) = p_Quat_b * ω_ib_b
     Eigen::Vector3d p_omega_ip = _imuPos.p_quatGyro_b() * b_Quat_n * n_omega_ib;
     LOG_DATA("{}: [{:8.3f}] p_omega_ip = {} [rad/s]", nameId(), imuUpdateTime, p_omega_ip.transpose());
+    //----------------------------------------------------AirPressure Baro------------------------------------------------------------------------
+    double a = NAV::InsConst<>::PZ90::a; 
+    double e_squared = NAV::InsConst<>::PZ90::e_squared;
+    Eigen::Vector3d ecef_position = trafo::internal::lla2ecef(lla_position,a,e_squared); 
+    Eigen::Vector3d vec = Eigen::Vector3d::Zero();
+    Eigen::Vector3d ned_position =  trafo::ecef2ned(ecef_position,vec);
+    
+    double altMsl = -ned_position(2);
+    // TODO baro auf OBS
+    double airPressure_unbiased = calcHeightStAtm(calcTotalPressureStAtm(altMsl));
 
     // -------------------------------------------------- Construct the message to send out ----------------------------------------------------
 
@@ -1570,6 +1583,8 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
     obs->gyroUncompXYZ = p_omega_ip;
     // obs->magCompXYZ.emplace(0, 0, 0);
     // obs->magUncompXYZ.emplace(0, 0, 0);
+    obs->airPressure = airPressure_unbiased;
+    obs->altitude = ned_position(2);
 
     auto e_Quat_n = n_Quat_e.conjugate();
 

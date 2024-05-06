@@ -20,11 +20,21 @@ namespace NAV
 
 /// @brief Calculates the standard atmosphere total pressure
 /// @param[in] altitudeMSL Geodetic height above MSL (mean sea level) [m]
-/// @return The total pressure in [hPa] = [mbar]
+/// @return The total pressure in [hPa] = [mbar] ??? 
 /// @note See \cite RTKLIB RTKLIB ch. E.5, eq. E.5.1, p. 149
 [[nodiscard]] constexpr double calcTotalPressureStAtm(double altitudeMSL)
 {
     return 1013.25 * gcem::pow(1 - 2.2557e-5 * altitudeMSL, 5.2568);
 }
+
+/// @brief Calculates the standard atmosphere Height above MSL (mean sea level) [m]
+/// @param[in] pressure total pressure in [hPa] = [mbar]
+/// @return Height above MSL (mean sea level) [m]
+[[nodiscard]] constexpr double calcHeightStAtm(double pressure)
+{
+    return 44.300 * (1-gcem::pow(pressure / 1013.25, 0.19)) * 1000;
+}
+
+
 
 } // namespace NAV
