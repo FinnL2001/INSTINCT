@@ -171,7 +171,15 @@ class ErrorModel : public Node
     Eigen::Vector3d _imuGyroscopeNoise = Eigen::Vector3d::Zero();
     /// Random number generator for the gyroscope noise
     RandomNumberGenerator _imuGyroscopeRng;
-
+     /// Possible units to specify an Barometer noise with
+    enum class ImuBarometerNoiseUnits
+    {
+        hPa,  ///< [hPa] (Standard deviation)
+        hPa2, ///< [hPa²] (Variance)
+    };
+    ImuBarometerNoiseUnits _imuBarometerNoiseUnit = ImuBarometerNoiseUnits::hPa;
+    double _imuBarometerNoise = 0.0;
+    RandomNumberGenerator _imuBarometerRng;
     // #########################################################################################################################################
     //                                                                PosVelAtt
     // #########################################################################################################################################

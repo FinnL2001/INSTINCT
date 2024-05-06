@@ -25,6 +25,8 @@ namespace nm = NAV::NodeManager;
 #include "util/Eigen.hpp"
 #include "util/StringUtil.hpp"
 
+#include"Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
+
 #include <imgui_internal.h>
 #include <limits>
 #include <set>
@@ -57,6 +59,7 @@ NAV::ErrorModel::ErrorModel()
 
     _imuAccelerometerRng.seed = dist(gen);
     _imuGyroscopeRng.seed = dist(gen);
+    _imuBarometerRng.seed = dist(gen);
 
     _positionRng.seed = dist(gen);
     _velocityRng.seed = dist(gen);
@@ -190,9 +193,14 @@ void NAV::ErrorModel::guiConfig()
                 noiseGuiInput(fmt::format("Gyroscope Noise ({})", _imuGyroscopeNoiseUnit == ImuGyroscopeNoiseUnits::rad_s || _imuGyroscopeNoiseUnit == ImuGyroscopeNoiseUnits::deg_s
                                                                       ? "Standard deviation"
                                                                       : "Variance")
-                                  .c_str(),
+                                  .c_str(),               
                               _imuGyroscopeNoise, _imuGyroscopeNoiseUnit, "rad/s\0deg/s\0rad^2/s^2\0deg^2/s^2\0\0", "%.2g", _imuGyroscopeRng);
-            }
+                noiseGuiInput(fmt::format("Barometer Noise ({})", _imuBarometerNoiseUnit  == ImuBarometerNoiseUnits::hPa 
+                                                                      ? "Standard deviation"
+                                                                      : "Variance")
+                                  .c_str(),
+                              _imuBarometerNoise, _imuBarometerNoiseUnit, "hPa\0 hPa^2\0\0", "%.2g", _imuBarometerRng);          
+            }            
             else if (_inputType == InputType::PosVelAtt)
             {
                 noiseGuiInput(fmt::format("Position Noise ({})", _positionNoiseUnit == PositionNoiseUnits::meter
@@ -385,6 +393,9 @@ json NAV::ErrorModel::save() const
     j["imuGyroscopeNoiseUnit"] = _imuGyroscopeNoiseUnit;
     j["imuGyroscopeNoise"] = _imuGyroscopeNoise;
     j["imuGyroscopeRng"] = _imuGyroscopeRng;
+    j["imuBarometerNoiseUnit"] = _imuBarometerNoiseUnit;
+    j["imuBarometerNoise"] = _imuBarometerNoise;
+    j["imuBarometerRng"] = _imuBarometerRng;
     // #########################################################################################################################################
     j["positionBiasUnit"] = _positionBiasUnit;
     j["positionBias"] = _positionBias;
@@ -440,6 +451,9 @@ void NAV::ErrorModel::restore(json const& j)
     if (j.contains("imuGyroscopeNoiseUnit")) { j.at("imuGyroscopeNoiseUnit").get_to(_imuGyroscopeNoiseUnit); }
     if (j.contains("imuGyroscopeNoise")) { j.at("imuGyroscopeNoise").get_to(_imuGyroscopeNoise); }
     if (j.contains("imuGyroscopeRng")) { j.at("imuGyroscopeRng").get_to(_imuGyroscopeRng); }
+    if (j.contains("imuBarometerNoiseUnit")) { j.at("imuBarometerNoiseUnit").get_to(_imuBarometerNoiseUnit); }
+    if (j.contains("imuBarometerNoise")) { j.at("imuBarometerNoise").get_to(_imuBarometerNoise); }
+    if (j.contains("imuBarometerRng")) { j.at("imuBarometerRng").get_to(_imuBarometerRng); }
     // #########################################################################################################################################
     if (j.contains("positionBiasUnit")) { j.at("positionBiasUnit").get_to(_positionBiasUnit); }
     if (j.contains("positionBias")) { j.at("positionBias").get_to(_positionBias); }
@@ -491,6 +505,7 @@ bool NAV::ErrorModel::resetNode()
     {
         _imuAccelerometerRng.resetSeed(size_t(id));
         _imuGyroscopeRng.resetSeed(size_t(id));
+        _imuBarometerRng.resetSeed(size_t(id));
     }
     else if (_inputType == InputType::PosVelAtt)
     {
@@ -645,6 +660,17 @@ void NAV::ErrorModel::receiveImuObs(const std::shared_ptr<ImuObs>& imuObs)
         break;
     }
     LOG_DATA("{}: accelerometerNoiseStd = {} [m/s^2]", nameId(), accelerometerNoiseStd.transpose());
+    //TODO Rechnung für Fehler 
+    double barometerNoiseStd = 0.0;
+    switch (_imuBarometerNoiseUnit)
+    {
+    case ImuBarometerNoiseUnits::hPa:
+        barometerNoiseStd = _imuBarometerNoise;
+        break;
+    case ImuBarometerNoiseUnits::hPa2:
+        barometerNoiseStd = Eigen::numext::sqrt(_imuBarometerNoise);
+        break;
+    }
 
     // Gyroscope Noise standard deviation in platform frame coordinates [rad/s]
     Eigen::Vector3d gyroscopeNoiseStd = Eigen::Vector3d::Zero();
@@ -675,7 +701,8 @@ void NAV::ErrorModel::receiveImuObs(const std::shared_ptr<ImuObs>& imuObs)
                                      + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0)),
                                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1)),
                                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) };
-
+    imuObs->airPressure.value() += _imuBarometerRng.getRand_normalDist(0.0,barometerNoiseStd);
+    imuObs->altitude.value() = calcHeightStAtm(imuObs->airPressure.value());
     invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, imuObs);
 }
 

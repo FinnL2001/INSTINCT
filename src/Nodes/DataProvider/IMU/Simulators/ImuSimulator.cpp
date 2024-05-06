@@ -1573,7 +1573,7 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
     
     double altMsl = -ned_position(2);
     // TODO baro auf OBS
-    double airPressure_unbiased = calcHeightStAtm(calcTotalPressureStAtm(altMsl));
+    double airPressure_unbiased = calcTotalPressureStAtm(altMsl);
 
     // -------------------------------------------------- Construct the message to send out ----------------------------------------------------
 

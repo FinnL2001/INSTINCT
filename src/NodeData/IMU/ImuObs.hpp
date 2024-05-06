@@ -73,7 +73,7 @@ class ImuObs : public NodeData
     }
 
     /// @brief Get the amount of descriptors
-    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 22; }
+    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 34; } //wenn das niedriger ist kann ich failled Imusim->error Model -> Plot ?
 
     /// @brief Returns a vector of data descriptors
     [[nodiscard]] std::vector<std::string> staticDataDescriptors() const override { return GetStaticDataDescriptors(); }
