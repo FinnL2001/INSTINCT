@@ -163,7 +163,8 @@ void NAV::ErrorModel::guiConfig()
         ImGui::Indent();
         {
             if (_inputType == InputType::ImuObs)
-            {
+            {   inputDoubleWithUnit("Baromter Priciple Error Temperatur", _imuBaroTempBias, _imuBaroTempBiasUnit, "K\0\0", "%.2g");
+                inputDoubleWithUnit("Baromter Priciple Error Pressure",_imuBaroPressureBias, _imuBaroPressureBiasUnit, "hPa\0\0", "%.2g");
                 inputVector3WithUnit("Accelerometer Bias (platform)", _imuAccelerometerBias_p, _imuAccelerometerBiasUnit, "m/s^2\0\0", "%.2g");
                 inputVector3WithUnit("Gyroscope Bias (platform)", _imuGyroscopeBias_p, _imuGyroscopeBiasUnit, "rad/s\0deg/s\0\0", "%.2g");
             }
