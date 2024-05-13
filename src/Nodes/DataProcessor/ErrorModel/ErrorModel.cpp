@@ -163,7 +163,8 @@ void NAV::ErrorModel::guiConfig()
         ImGui::Indent();
         {
             if (_inputType == InputType::ImuObs)
-            {   inputDoubleWithUnit("Baromter Priciple Error Temperatur", _imuBaroTempBias, _imuBaroTempBiasUnit, "K\0\0", "%.2g");
+            {   inputDoubleWithUnit("Varianz des Drifts", _imuBaroDriftVar, _imuBaroDriftUnit, "m\0\0", "%.2g");
+                inputDoubleWithUnit("Baromter Priciple Error Temperatur", _imuBaroTempBias, _imuBaroTempBiasUnit, "K\0\0", "%.2g");
                 inputDoubleWithUnit("Baromter Priciple Error Pressure",_imuBaroPressureBias, _imuBaroPressureBiasUnit, "hPa\0\0", "%.2g");
                 inputVector3WithUnit("Accelerometer Bias (platform)", _imuAccelerometerBias_p, _imuAccelerometerBiasUnit, "m/s^2\0\0", "%.2g");
                 inputVector3WithUnit("Gyroscope Bias (platform)", _imuGyroscopeBias_p, _imuGyroscopeBiasUnit, "rad/s\0deg/s\0\0", "%.2g");
@@ -397,6 +398,12 @@ json NAV::ErrorModel::save() const
     j["imuBarometerNoiseUnit"] = _imuBarometerNoiseUnit;
     j["imuBarometerNoise"] = _imuBarometerNoise;
     j["imuBarometerRng"] = _imuBarometerRng;
+    j["imuBaroTempBias"] = _imuBaroTempBias;
+    j["imuBaroDrift"] = _imuBaroDriftVar;
+    j["imuBaroTempBiasUnit"] = _imuBaroTempBiasUnit;
+    j["imuBaroDriftUnit"] = _imuBaroDriftUnit;
+    j["imuBaroPressureBias"] = _imuBaroPressureBias;
+    j["imuBaroPressureBiasUnit"] = _imuBaroPressureBiasUnit;
     // #########################################################################################################################################
     j["positionBiasUnit"] = _positionBiasUnit;
     j["positionBias"] = _positionBias;
@@ -455,6 +462,12 @@ void NAV::ErrorModel::restore(json const& j)
     if (j.contains("imuBarometerNoiseUnit")) { j.at("imuBarometerNoiseUnit").get_to(_imuBarometerNoiseUnit); }
     if (j.contains("imuBarometerNoise")) { j.at("imuBarometerNoise").get_to(_imuBarometerNoise); }
     if (j.contains("imuBarometerRng")) { j.at("imuBarometerRng").get_to(_imuBarometerRng); }
+    if (j.contains("imuBaroTempBias")) { j.at("imuBaroTempBias").get_to(_imuBaroTempBias); }
+    if (j.contains("imuBaroPressureBias")) { j.at("imuBaroPressureBias").get_to(_imuBaroPressureBias); }
+    if (j.contains("imuBaroTempBiasUnit")) { j.at("imuBaroTempBiasUnit").get_to(_imuBaroTempBiasUnit); }
+    if (j.contains("imuBaroPressureBiasUnit")) { j.at("imuBaroPressureBiasUnit").get_to(_imuBaroPressureBiasUnit); }
+    if (j.contains("imuBaroDriftUnit")) { j.at("imuBaroDriftUnit").get_to(_imuBaroDriftUnit); } 
+    if (j.contains("imuBaroDriftVar")) { j.at("imuBaroDriftVar").get_to(_imuBaroDriftVar); } 
     // #########################################################################################################################################
     if (j.contains("positionBiasUnit")) { j.at("positionBiasUnit").get_to(_positionBiasUnit); }
     if (j.contains("positionBias")) { j.at("positionBias").get_to(_positionBias); }
@@ -702,8 +715,19 @@ void NAV::ErrorModel::receiveImuObs(const std::shared_ptr<ImuObs>& imuObs)
                                      + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0)),
                                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1)),
                                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) };
+    
+    ///TODO Baro Rechnung 
+    double imuBaroTempBias_p = (imuObs->altitude.value() / 288.15) * _imuBaroTempBias; // (H/T_0) * deltaT
+    double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitude.value()) * _imuBaroPressureBias * 100;//(R/gP_0)*(H*beta+T_o) deltaP
+    double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitude.value() / 288.15) ) * _imuBaroTempBias * _imuBaroPressureBias * 100;
+    _imuBaroDrift = _imuBaroDrift + _imuBarometerRng.getRand_normalDist(0.0,_imuBaroDriftVar);
+
+    imuObs->altitude.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
+    imuObs->airPressure.value()=calcTotalPressureStAtm(-imuObs->altitude.value());
+
+
     imuObs->airPressure.value() += _imuBarometerRng.getRand_normalDist(0.0,barometerNoiseStd);
-    imuObs->altitude.value() = calcHeightStAtm(imuObs->airPressure.value());
+    imuObs->altitude.value() = -calcHeightStAtm(imuObs->airPressure.value());
     invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, imuObs);
 }
 

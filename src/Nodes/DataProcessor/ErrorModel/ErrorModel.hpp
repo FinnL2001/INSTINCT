@@ -132,8 +132,10 @@ class ErrorModel : public Node
     Eigen::Vector3d _imuAccelerometerBias_p = Eigen::Vector3d::Zero();
 
 
-
-
+    enum class ImuBaroDriftUnits
+    {
+        m,///< [m]
+    };
 
     enum class ImuBaroTempBiasUnits
     {
@@ -144,12 +146,14 @@ class ErrorModel : public Node
         hPa, ///< [hPa]
     };
      /// Selected units for the Baro biases in the GUI
+    ImuBaroDriftUnits _imuBaroDriftUnit = ImuBaroDriftUnits::m;
     ImuBaroTempBiasUnits _imuBaroTempBiasUnit = ImuBaroTempBiasUnits::K;
     ImuBaroPressureBiasUnits _imuBaroPressureBiasUnit = ImuBaroPressureBiasUnits::hPa;
     /// Biases of the Barometer in platform coordinates 
     double _imuBaroTempBias = 0.0;
     double _imuBaroPressureBias = 0.0;
-
+    double  _imuBaroDriftVar = 0.0;
+    double _imuBaroDrift = 0.0;
     /// Possible units to specify an gyroscope bias with
     enum class ImuGyroscopeBiasUnits
     {
