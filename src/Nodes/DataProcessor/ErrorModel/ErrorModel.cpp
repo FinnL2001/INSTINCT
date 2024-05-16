@@ -717,17 +717,17 @@ void NAV::ErrorModel::receiveImuObs(const std::shared_ptr<ImuObs>& imuObs)
                                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) };
     
     ///TODO Baro Rechnung 
-    double imuBaroTempBias_p = (imuObs->altitude.value() / 288.15) * _imuBaroTempBias; // (H/T_0) * deltaT
-    double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitude.value()) * _imuBaroPressureBias * 100;//(R/gP_0)*(H*beta+T_o) deltaP
-    double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitude.value() / 288.15) ) * _imuBaroTempBias * _imuBaroPressureBias * 100;
+    double imuBaroTempBias_p = (imuObs->altitudeUncomp.value() / 288.15) * _imuBaroTempBias; // (H/T_0) * deltaT
+    double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitudeUncomp.value()) * _imuBaroPressureBias * 100;//(R/gP_0)*(H*beta+T_o) deltaP
+    double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitudeUncomp.value() / 288.15) ) * _imuBaroTempBias * _imuBaroPressureBias * 100;
     _imuBaroDrift = _imuBaroDrift + _imuBarometerRng.getRand_normalDist(0.0,_imuBaroDriftVar);
 
-    imuObs->altitude.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
-    imuObs->airPressure.value()=calcTotalPressureStAtm(-imuObs->altitude.value());
+    imuObs->altitudeUncomp.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
+    imuObs->airPressureUncomp.value()=calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
 
 
-    imuObs->airPressure.value() += _imuBarometerRng.getRand_normalDist(0.0,barometerNoiseStd);
-    imuObs->altitude.value() = -calcHeightStAtm(imuObs->airPressure.value());
+    imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0,barometerNoiseStd);
+    imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
     invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, imuObs);
 }
 

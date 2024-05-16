@@ -1583,8 +1583,10 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
     obs->gyroUncompXYZ = p_omega_ip;
     // obs->magCompXYZ.emplace(0, 0, 0);
     // obs->magUncompXYZ.emplace(0, 0, 0);
-    obs->airPressure = airPressure_unbiased;
-    obs->altitude = ned_position(2);
+    obs->airPressureUncomp = airPressure_unbiased;
+    obs->airPressureComp = airPressure_unbiased;
+    obs->altitudeUncomp = ned_position(2);
+     obs->altitudeComp = ned_position(2);
 
     auto e_Quat_n = n_Quat_e.conjugate();
 

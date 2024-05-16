@@ -60,7 +60,7 @@ class ImuObsSimulated final : public ImuObs
     }
 
     /// @brief Get the amount of descriptors
-    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 34; }
+    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 36; }
 
     /// @brief Returns a vector of data descriptors
     [[nodiscard]] std::vector<std::string> staticDataDescriptors() const override { return GetStaticDataDescriptors(); }
@@ -97,33 +97,37 @@ class ImuObsSimulated final : public ImuObs
         case 18: // Gyro Comp Z [rad/s]
         case 19: // Temperature [°C]
             return ImuObs::getValueAt(idx);
-        case 20:// Baro Air Pressure [hPa]
+        case 20: // Baro Air Pressure uncomp [hPa]
             return ImuObs::getValueAt(idx);
-        case 21:// Altitude NED frame [m]
+        case 21: // Altitude NED frame uncomp [m]
             return ImuObs::getValueAt(idx);
-        case 22: // AccelDynamicsN [m/s^2]
+        case 22: // Baro Air Pressure comp [hPa]
+            return ImuObs::getValueAt(idx);
+        case 23: // Altitude NED frame comp [m]
+            return ImuObs::getValueAt(idx);
+        case 24: // AccelDynamicsN [m/s^2]
             return n_accelDynamics.x();
-        case 23: // AccelDynamicsE [m/s^2]
+        case 25: // AccelDynamicsE [m/s^2]
             return n_accelDynamics.y();
-        case 24: // AccelDynamicsD [m/s^2]
+        case 26: // AccelDynamicsD [m/s^2]
             return n_accelDynamics.z();
-        case 25: // AngularRateN (ω_nb_n) [rad/s]
+        case 27: // AngularRateN (ω_nb_n) [rad/s]
             return n_angularRateDynamics.x();
-        case 26: // AngularRateE (ω_nb_n) [rad/s]
+        case 28: // AngularRateE (ω_nb_n) [rad/s]
             return n_angularRateDynamics.y();
-        case 27: // AngularRateD (ω_nb_n) [rad/s]
+        case 29: // AngularRateD (ω_nb_n) [rad/s]
             return n_angularRateDynamics.z();
-        case 28: // AccelDynamicsX ECEF [m/s^2]
+        case 30: // AccelDynamicsX ECEF [m/s^2]
             return e_accelDynamics.x();
-        case 29: // AccelDynamicsY ECEF [m/s^2]
+        case 31: // AccelDynamicsY ECEF [m/s^2]
             return e_accelDynamics.y();
-        case 30: // AccelDynamicsZ ECEF [m/s^2]
+        case 32: // AccelDynamicsZ ECEF [m/s^2]
             return e_accelDynamics.z();
-        case 31: // AngularRateX ECEF (ω_nb_e) [rad/s]
+        case 33: // AngularRateX ECEF (ω_nb_e) [rad/s]
             return e_angularRateDynamics.x();
-        case 32: // AngularRateY ECEF (ω_nb_e) [rad/s]
+        case 34: // AngularRateY ECEF (ω_nb_e) [rad/s]
             return e_angularRateDynamics.y();
-        case 33: // AngularRateZ ECEF (ω_nb_e) [rad/s]
+        case 35: // AngularRateZ ECEF (ω_nb_e) [rad/s]
             return e_angularRateDynamics.z();
         default:
             return std::nullopt;

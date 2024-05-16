@@ -67,13 +67,15 @@ class ImuObs : public NodeData
             "Gyro Comp Y [rad/s]",
             "Gyro Comp Z [rad/s]",
             "Temperature [°C]",
-            "Air pressure [hPa]",
-            "Altitude NED [m]"
+            "Air pressure uncomp [hPa]",
+            "Altitude NED uncomp [m]",
+            "Air pressure comp [hPa]",
+            "Altitude NED comp [m]"
         };
     }
 
     /// @brief Get the amount of descriptors
-    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 34; } //wenn das niedriger ist kann ich failled Imusim->error Model -> Plot ?
+    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 36; } // wenn das niedriger ist kann ich failled Imusim->error Model -> Plot ?
 
     /// @brief Returns a vector of data descriptors
     [[nodiscard]] std::vector<std::string> staticDataDescriptors() const override { return GetStaticDataDescriptors(); }
@@ -150,10 +152,16 @@ class ImuObs : public NodeData
             if (temperature.has_value()) { return temperature.value(); }
             break;
         case 20: // Air Pressure [hPa]
-            if (airPressure.has_value()) { return airPressure.value(); }
+            if (airPressureUncomp.has_value()) { return airPressureUncomp.value(); }
             break;
         case 21: // Altitude NED [m]
-            if (altitude.has_value()) { return altitude.value(); }
+            if (altitudeUncomp.has_value()) { return altitudeUncomp.value(); }
+            break;
+        case 22: // Altitude NED [m]
+            if (airPressureComp.has_value()) { return airPressureComp.value(); }
+            break;
+        case 23: // Altitude NED [m]
+            if (altitudeComp.has_value()) { return altitudeComp.value(); }
             break;
         default:
             return std::nullopt;
@@ -181,9 +189,11 @@ class ImuObs : public NodeData
     /// The compensated angular rate measured in units of [rad/s], and given in the platform frame.
     std::optional<Eigen::Vector3d> gyroCompXYZ;
     /// The Baro Pressure in units of [hPa]
-    std::optional<double> airPressure;
+    std::optional<double> airPressureUncomp;
+    std::optional<double> airPressureComp;
     /// The Baro altitude  in [m] given in NED Frame
-    std::optional<double> altitude;
+    std::optional<double> altitudeUncomp;
+    std::optional<double> altitudeComp;
     /// The IMU temperature measured in units of [Celsius].
     std::optional<double> temperature = 0.0;
 };
