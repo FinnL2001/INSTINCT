@@ -13,6 +13,9 @@
 namespace nm = NAV::NodeManager;
 #include "internal/FlowManager.hpp"
 
+#include "NodeData/IMU/ImuObsSimulated.hpp"
+#include "NodeData/IMU/ImuObsWDelta.hpp"
+
 #include "internal/gui/widgets/HelpMarker.hpp"
 #include "internal/gui/widgets/imgui_ex.hpp"
 #include "internal/gui/widgets/InputWithUnit.hpp"
@@ -25,7 +28,7 @@ namespace nm = NAV::NodeManager;
 #include "util/Eigen.hpp"
 #include "util/StringUtil.hpp"
 
-#include"Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
+#include "Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
 
 #include <imgui_internal.h>
 #include <limits>
@@ -37,7 +40,7 @@ namespace nm = NAV::NodeManager;
 namespace NAV
 {
 /// List of supported data identifiers
-const std::vector<std::string> supportedDataIdentifier{ ImuObs::type(), PosVelAtt::type(), GnssObs::type() };
+const std::vector<std::string> supportedDataIdentifier{ ImuObs::type(), ImuObsWDelta::type(), PosVelAtt::type(), GnssObs::type() };
 
 } // namespace NAV
 
@@ -157,15 +160,16 @@ void NAV::ErrorModel::guiConfig()
         rngInput(title, rng);
     };
 
-    if (_inputType == InputType::ImuObs || _inputType == InputType::PosVelAtt)
+    if (_inputType == InputType::ImuObs || _inputType == InputType::ImuObsWDelta || _inputType == InputType::PosVelAtt)
     {
         ImGui::TextUnformatted("Offsets:");
         ImGui::Indent();
         {
-            if (_inputType == InputType::ImuObs)
-            {   inputDoubleWithUnit("Varianz des Drifts", _imuBaroDriftVar, _imuBaroDriftUnit, "m\0\0", "%.2g");
+            if (_inputType == InputType::ImuObs || _inputType == InputType::ImuObsWDelta)
+            {
+                inputDoubleWithUnit("Varianz des Drifts", _imuBaroDriftVar, _imuBaroDriftUnit, "m\0\0", "%.2g");
                 inputDoubleWithUnit("Baromter Priciple Error Temperatur", _imuBaroTempBias, _imuBaroTempBiasUnit, "K\0\0", "%.2g");
-                inputDoubleWithUnit("Baromter Priciple Error Pressure",_imuBaroPressureBias, _imuBaroPressureBiasUnit, "hPa\0\0", "%.2g");
+                inputDoubleWithUnit("Baromter Priciple Error Pressure", _imuBaroPressureBias, _imuBaroPressureBiasUnit, "hPa\0\0", "%.2g");
                 inputVector3WithUnit("Accelerometer Bias (platform)", _imuAccelerometerBias_p, _imuAccelerometerBiasUnit, "m/s^2\0\0", "%.2g");
                 inputVector3WithUnit("Gyroscope Bias (platform)", _imuGyroscopeBias_p, _imuGyroscopeBiasUnit, "rad/s\0deg/s\0\0", "%.2g");
             }
@@ -180,12 +184,12 @@ void NAV::ErrorModel::guiConfig()
         ImGui::Unindent();
     }
 
-    if (_inputType == InputType::ImuObs || _inputType == InputType::PosVelAtt || _inputType == InputType::GnssObs)
+    if (_inputType == InputType::ImuObs || _inputType == InputType::ImuObsWDelta || _inputType == InputType::PosVelAtt || _inputType == InputType::GnssObs)
     {
         ImGui::TextUnformatted("Measurement noise:");
         ImGui::Indent();
         {
-            if (_inputType == InputType::ImuObs)
+            if (_inputType == InputType::ImuObs || _inputType == InputType::ImuObsWDelta)
             {
                 noiseGuiInput(fmt::format("Accelerometer Noise ({})", _imuAccelerometerNoiseUnit == ImuAccelerometerNoiseUnits::m_s2
                                                                           ? "Standard deviation"
@@ -195,14 +199,24 @@ void NAV::ErrorModel::guiConfig()
                 noiseGuiInput(fmt::format("Gyroscope Noise ({})", _imuGyroscopeNoiseUnit == ImuGyroscopeNoiseUnits::rad_s || _imuGyroscopeNoiseUnit == ImuGyroscopeNoiseUnits::deg_s
                                                                       ? "Standard deviation"
                                                                       : "Variance")
-                                  .c_str(),               
+                                  .c_str(),
                               _imuGyroscopeNoise, _imuGyroscopeNoiseUnit, "rad/s\0deg/s\0rad^2/s^2\0deg^2/s^2\0\0", "%.2g", _imuGyroscopeRng);
-                noiseGuiInput(fmt::format("Barometer Noise ({})", _imuBarometerNoiseUnit  == ImuBarometerNoiseUnits::hPa 
+                noiseGuiInput(fmt::format("Barometer Noise ({})", _imuBarometerNoiseUnit == ImuBarometerNoiseUnits::hPa
                                                                       ? "Standard deviation"
                                                                       : "Variance")
                                   .c_str(),
-                              _imuBarometerNoise, _imuBarometerNoiseUnit, "hPa\0 hPa^2\0\0", "%.2g", _imuBarometerRng);          
-            }            
+                              _imuBarometerNoise, _imuBarometerNoiseUnit, "hPa\0 hPa^2\0\0", "%.2g", _imuBarometerRng);
+
+                if (_inputType == InputType::ImuObsWDelta)
+                {
+                    ImGui::SetNextItemWidth(itemWidth);
+                    if (ImGui::InputDoubleL(fmt::format("Delta Vel & Theta averaging window size##{}", size_t(id)).c_str(), &_imuObsWDeltaAverageWindow,
+                                            1.0, std::numeric_limits<double>::max(), 1.0, 1.0, "%.2f"))
+                    {
+                        flow::ApplyChanges();
+                    }
+                }
+            }
             else if (_inputType == InputType::PosVelAtt)
             {
                 noiseGuiInput(fmt::format("Position Noise ({})", _positionNoiseUnit == PositionNoiseUnits::meter
@@ -466,8 +480,8 @@ void NAV::ErrorModel::restore(json const& j)
     if (j.contains("imuBaroPressureBias")) { j.at("imuBaroPressureBias").get_to(_imuBaroPressureBias); }
     if (j.contains("imuBaroTempBiasUnit")) { j.at("imuBaroTempBiasUnit").get_to(_imuBaroTempBiasUnit); }
     if (j.contains("imuBaroPressureBiasUnit")) { j.at("imuBaroPressureBiasUnit").get_to(_imuBaroPressureBiasUnit); }
-    if (j.contains("imuBaroDriftUnit")) { j.at("imuBaroDriftUnit").get_to(_imuBaroDriftUnit); } 
-    if (j.contains("imuBaroDriftVar")) { j.at("imuBaroDriftVar").get_to(_imuBaroDriftVar); } 
+    if (j.contains("imuBaroDriftUnit")) { j.at("imuBaroDriftUnit").get_to(_imuBaroDriftUnit); }
+    if (j.contains("imuBaroDriftVar")) { j.at("imuBaroDriftVar").get_to(_imuBaroDriftVar); }
     // #########################################################################################################################################
     if (j.contains("positionBiasUnit")) { j.at("positionBiasUnit").get_to(_positionBiasUnit); }
     if (j.contains("positionBias")) { j.at("positionBias").get_to(_positionBias); }
@@ -515,7 +529,7 @@ bool NAV::ErrorModel::resetNode()
 {
     LOG_TRACE("{}: called", nameId());
 
-    if (_inputType == InputType::ImuObs)
+    if (_inputType == InputType::ImuObs || _inputType == InputType::ImuObsWDelta)
     {
         _imuAccelerometerRng.resetSeed(size_t(id));
         _imuGyroscopeRng.resetSeed(size_t(id));
@@ -558,7 +572,11 @@ void NAV::ErrorModel::afterCreateLink(OutputPin& startPin, InputPin& endPin)
     // Overwrite output pin identifier with input pin identifier
     outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier = startPin.dataIdentifier;
 
-    if (NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier, { ImuObs::type() }))
+    if (NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier, { ImuObsWDelta::type() }))
+    {
+        _inputType = InputType::ImuObsWDelta;
+    }
+    else if (NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier, { ImuObs::type() }))
     {
         _inputType = InputType::ImuObs;
     }
@@ -619,23 +637,35 @@ void NAV::ErrorModel::receiveObs(NAV::InputPin::NodeDataQueue& queue, size_t /* 
     if (!_lastObservationTime.empty()) { _messageFrequency = 1.0 / static_cast<double>((obs->insTime - _lastObservationTime).count()); }
 
     // Select the correct data type and make a copy of the node data to modify
-    if (_inputType == InputType::ImuObs)
+    if (NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier, { ImuObsSimulated::type() }))
     {
-        receiveImuObs(std::make_shared<ImuObs>(*std::static_pointer_cast<const ImuObs>(obs)));
+        invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, receiveImuObs(std::make_shared<ImuObsSimulated>(*std::static_pointer_cast<const ImuObsSimulated>(obs))));
     }
-    else if (_inputType == InputType::PosVelAtt)
+    else if (NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier, { ImuObsWDelta::type() }))
     {
-        receivePosVelAtt(std::make_shared<PosVelAtt>(*std::static_pointer_cast<const PosVelAtt>(obs)));
+        invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, receiveImuObs(std::make_shared<ImuObsWDelta>(*std::static_pointer_cast<const ImuObsWDelta>(obs))));
     }
-    else if (_inputType == InputType::GnssObs)
+    else if (NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier, { ImuObs::type() }))
     {
-        receiveGnssObs(std::make_shared<GnssObs>(*std::static_pointer_cast<const GnssObs>(obs)));
+        invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, receiveImuObs(std::make_shared<ImuObs>(*std::static_pointer_cast<const ImuObs>(obs))));
+    }
+    else if (_inputType == InputType::ImuObsWDelta)
+    {
+        invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, receiveImuObsWDelta(std::make_shared<ImuObsWDelta>(*std::static_pointer_cast<const ImuObsWDelta>(obs))));
+    }
+    else if (NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier, { PosVelAtt::type() }))
+    {
+        invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, receivePosVelAtt(std::make_shared<PosVelAtt>(*std::static_pointer_cast<const PosVelAtt>(obs))));
+    }
+    else if (NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(outputPins.at(OUTPUT_PORT_INDEX_FLOW).dataIdentifier, { GnssObs::type() }))
+    {
+        invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, receiveGnssObs(std::make_shared<GnssObs>(*std::static_pointer_cast<const GnssObs>(obs))));
     }
 
     _lastObservationTime = obs->insTime;
 }
 
-void NAV::ErrorModel::receiveImuObs(const std::shared_ptr<ImuObs>& imuObs)
+std::shared_ptr<NAV::ImuObs> NAV::ErrorModel::receiveImuObs(const std::shared_ptr<ImuObs>& imuObs)
 {
     // Accelerometer Bias in platform frame coordinates [m/s^2]
     Eigen::Vector3d accelerometerBias_p = Eigen::Vector3d::Zero();
@@ -674,7 +704,7 @@ void NAV::ErrorModel::receiveImuObs(const std::shared_ptr<ImuObs>& imuObs)
         break;
     }
     LOG_DATA("{}: accelerometerNoiseStd = {} [m/s^2]", nameId(), accelerometerNoiseStd.transpose());
-    //TODO Rechnung für Fehler 
+    // TODO Rechnung für Fehler
     double barometerNoiseStd = 0.0;
     switch (_imuBarometerNoiseUnit)
     {
@@ -707,31 +737,112 @@ void NAV::ErrorModel::receiveImuObs(const std::shared_ptr<ImuObs>& imuObs)
 
     // #########################################################################################################################################
 
-    imuObs->accelUncompXYZ.value() += accelerometerBias_p
-                                      + Eigen::Vector3d{ _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(0)),
-                                                         _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(1)),
-                                                         _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2)) };
-    imuObs->gyroUncompXYZ.value() += gyroscopeBias_p
-                                     + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0)),
-                                                        _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1)),
-                                                        _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) };
-    
-    ///TODO Baro Rechnung 
-    double imuBaroTempBias_p = (imuObs->altitudeUncomp.value() / 288.15) * _imuBaroTempBias; // (H/T_0) * deltaT
-    double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitudeUncomp.value()) * _imuBaroPressureBias * 100;//(R/gP_0)*(H*beta+T_o) deltaP
-    double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitudeUncomp.value() / 288.15) ) * _imuBaroTempBias * _imuBaroPressureBias * 100;
-    _imuBaroDrift = _imuBaroDrift + _imuBarometerRng.getRand_normalDist(0.0,_imuBaroDriftVar);
+    imuObs->p_acceleration += accelerometerBias_p
+                              + Eigen::Vector3d{ _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(0)),
+                                                 _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(1)),
+                                                 _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2)) };
+    imuObs->p_angularRate += gyroscopeBias_p
+                             + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0)),
+                                                _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1)),
+                                                _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) };
+
+    /// TODO Baro Rechnung
+    double imuBaroTempBias_p = (imuObs->altitudeUncomp.value() / 288.15) * _imuBaroTempBias;                                                        // (H/T_0) * deltaT
+    double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitudeUncomp.value()) * _imuBaroPressureBias * 100; //(R/gP_0)*(H*beta+T_o) deltaP
+    double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitudeUncomp.value() / 288.15)) * _imuBaroTempBias * _imuBaroPressureBias * 100;
+    _imuBaroDrift = _imuBaroDrift + _imuBarometerRng.getRand_normalDist(0.0, _imuBaroDriftVar);
 
     imuObs->altitudeUncomp.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
-    imuObs->airPressureUncomp.value()=calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
+    imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
 
-
-    imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0,barometerNoiseStd);
+    imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
     imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
-    invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, imuObs);
+
+    return imuObs;
 }
 
-void NAV::ErrorModel::receivePosVelAtt(const std::shared_ptr<PosVelAtt>& posVelAtt)
+std::shared_ptr<NAV::ImuObsWDelta> NAV::ErrorModel::receiveImuObsWDelta(const std::shared_ptr<ImuObsWDelta>& imuObs)
+{
+    // Accelerometer Bias in platform frame coordinates [m/s^2]
+    Eigen::Vector3d accelerometerBias_p = Eigen::Vector3d::Zero();
+    switch (_imuAccelerometerBiasUnit)
+    {
+    case ImuAccelerometerBiasUnits::m_s2:
+        accelerometerBias_p = _imuAccelerometerBias_p;
+        break;
+    }
+    LOG_DATA("{}: accelerometerBias_p = {} [m/s^2]", nameId(), accelerometerBias_p.transpose());
+
+    // Gyroscope Bias in platform frame coordinates [rad/s]
+    Eigen::Vector3d gyroscopeBias_p = Eigen::Vector3d::Zero();
+    switch (_imuGyroscopeBiasUnit)
+    {
+    case ImuGyroscopeBiasUnits::deg_s:
+        gyroscopeBias_p = deg2rad(_imuGyroscopeBias_p);
+        break;
+    case ImuGyroscopeBiasUnits::rad_s:
+        gyroscopeBias_p = _imuGyroscopeBias_p;
+        break;
+    }
+    LOG_DATA("{}: gyroscopeBias_p = {} [rad/s]", nameId(), gyroscopeBias_p.transpose());
+
+    // #########################################################################################################################################
+
+    // Accelerometer Noise standard deviation in platform frame coordinates [m/s^2]
+    Eigen::Vector3d accelerometerNoiseStd = Eigen::Vector3d::Zero();
+    switch (_imuAccelerometerNoiseUnit)
+    {
+    case ImuAccelerometerNoiseUnits::m_s2:
+        accelerometerNoiseStd = _imuAccelerometerNoise;
+        break;
+    case ImuAccelerometerNoiseUnits::m2_s4:
+        accelerometerNoiseStd = _imuAccelerometerNoise.cwiseSqrt();
+        break;
+    }
+    LOG_DATA("{}: accelerometerNoiseStd = {} [m/s^2]", nameId(), accelerometerNoiseStd.transpose());
+
+    // Gyroscope Noise standard deviation in platform frame coordinates [rad/s]
+    Eigen::Vector3d gyroscopeNoiseStd = Eigen::Vector3d::Zero();
+    switch (_imuGyroscopeNoiseUnit)
+    {
+    case ImuGyroscopeNoiseUnits::rad_s:
+        gyroscopeNoiseStd = _imuGyroscopeNoise;
+        break;
+    case ImuGyroscopeNoiseUnits::deg_s:
+        gyroscopeNoiseStd = deg2rad(_imuGyroscopeNoise);
+        break;
+    case ImuGyroscopeNoiseUnits::rad2_s2:
+        gyroscopeNoiseStd = _imuGyroscopeNoise.cwiseSqrt();
+        break;
+    case ImuGyroscopeNoiseUnits::deg2_s2:
+        gyroscopeNoiseStd = deg2rad(_imuGyroscopeNoise.cwiseSqrt());
+        break;
+    }
+    LOG_DATA("{}: gyroscopeNoiseStd = {} [rad/s]", nameId(), gyroscopeNoiseStd.transpose());
+
+    // #########################################################################################################################################
+
+    imuObs->dvel += accelerometerBias_p * imuObs->dtime
+                    + Eigen::Vector3d{ _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(0) / std::sqrt(_imuObsWDeltaAverageWindow)),
+                                       _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(1) / std::sqrt(_imuObsWDeltaAverageWindow)),
+                                       _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2) / std::sqrt(_imuObsWDeltaAverageWindow)) };
+    imuObs->dtheta += gyroscopeBias_p * imuObs->dtime
+                      + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0) / std::sqrt(_imuObsWDeltaAverageWindow)),
+                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1) / std::sqrt(_imuObsWDeltaAverageWindow)),
+                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2) / std::sqrt(_imuObsWDeltaAverageWindow)) };
+
+    imuObs->p_acceleration += accelerometerBias_p
+                              + Eigen::Vector3d{ _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(0)),
+                                                 _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(1)),
+                                                 _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2)) };
+    imuObs->p_angularRate += gyroscopeBias_p
+                             + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0)),
+                                                _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1)),
+                                                _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) };
+    return imuObs;
+}
+
+std::shared_ptr<NAV::PosVelAtt> NAV::ErrorModel::receivePosVelAtt(const std::shared_ptr<PosVelAtt>& posVelAtt)
 {
     // Position Bias in latLonAlt in [rad, rad, m]
     Eigen::Vector3d lla_positionBias = Eigen::Vector3d::Zero();
@@ -867,10 +978,10 @@ void NAV::ErrorModel::receivePosVelAtt(const std::shared_ptr<PosVelAtt>& posVelA
                                                              _attitudeRng.getRand_normalDist(0.0, attitudeNoiseStd(1)),
                                                              _attitudeRng.getRand_normalDist(0.0, attitudeNoiseStd(2)) }));
 
-    invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, posVelAtt);
+    return posVelAtt;
 }
 
-void NAV::ErrorModel::receiveGnssObs(const std::shared_ptr<GnssObs>& gnssObs)
+std::shared_ptr<NAV::GnssObs> NAV::ErrorModel::receiveGnssObs(const std::shared_ptr<GnssObs>& gnssObs)
 {
     LOG_DATA("{}: [{}] Simulating error on GnssObs", nameId(), gnssObs->insTime.toYMDHMS(GPST));
     double pseudorangeNoise{}; // [m]
@@ -996,5 +1107,5 @@ void NAV::ErrorModel::receiveGnssObs(const std::shared_ptr<GnssObs>& gnssObs)
         }
     }
 
-    invokeCallbacks(OUTPUT_PORT_INDEX_FLOW, gnssObs);
+    return gnssObs;
 }
