@@ -58,6 +58,8 @@ class ImuObsSimulated final : public ImuObsWDelta
         desc.emplace_back("AngularRateX ECEF (ω_nb_e) [rad/s]");
         desc.emplace_back("AngularRateY ECEF (ω_nb_e) [rad/s]");
         desc.emplace_back("AngularRateZ ECEF (ω_nb_e) [rad/s]");
+        desc.emplace_back("Air pressure Comp [hPa]");
+        desc.emplace_back("Altitude NED Comp [m]");
         return desc;
     }
 
@@ -91,43 +93,48 @@ class ImuObsSimulated final : public ImuObsWDelta
         case 10: // Temperature [°C]
         case 11: // Baro Air Pressure uncomp [hPa]
         case 12: // Altitude NED frame uncomp [m]
-        case 13: // Baro Air Pressure comp [hPa]
-        case 14: // Altitude NED frame comp [m]
-        case 15: // dTime [s]
-        case 16: // dTheta X [deg]
-        case 17: // dTheta Y [deg]
-        case 18: // dTheta Z [deg]
-        case 19: // dVelocity X [m/s]
-        case 20: // dVelocity Y [m/s]
-        case 21: // dVelocity Z [m/s]
+        case 13: // dTime [s]
+        case 14: // dTheta X [deg]
+        case 15: // dTheta Y [deg]
+        case 16: // dTheta Z [deg]
+        case 17: // dVelocity X [m/s]
+        case 18: // dVelocity Y [m/s]
+        case 19: // dVelocity Z [m/s]
             return ImuObsWDelta::getValueAt(idx);
-        case 22: // AccelDynamicsN [m/s^2]
+        case 20: // AccelDynamicsN [m/s^2]
             return n_accelDynamics.x();
-        case 23: // AccelDynamicsE [m/s^2]
+        case 21: // AccelDynamicsE [m/s^2]
             return n_accelDynamics.y();
-        case 24: // AccelDynamicsD [m/s^2]
+        case 22: // AccelDynamicsD [m/s^2]
             return n_accelDynamics.z();
-        case 25: // AngularRateN (ω_nb_n) [rad/s]
+        case 23: // AngularRateN (ω_nb_n) [rad/s]
             return n_angularRateDynamics.x();
-        case 26: // AngularRateE (ω_nb_n) [rad/s]
+        case 24: // AngularRateE (ω_nb_n) [rad/s]
             return n_angularRateDynamics.y();
-        case 27: // AngularRateD (ω_nb_n) [rad/s]
+        case 25: // AngularRateD (ω_nb_n) [rad/s]
             return n_angularRateDynamics.z();
-        case 28: // AccelDynamicsX ECEF [m/s^2]
+        case 26: // AccelDynamicsX ECEF [m/s^2]
             return e_accelDynamics.x();
-        case 29: // AccelDynamicsY ECEF [m/s^2]
+        case 27: // AccelDynamicsY ECEF [m/s^2]
             return e_accelDynamics.y();
-        case 30: // AccelDynamicsZ ECEF [m/s^2]
+        case 28: // AccelDynamicsZ ECEF [m/s^2]
             return e_accelDynamics.z();
-        case 31: // AngularRateX ECEF (ω_nb_e) [rad/s]
+        case 29: // AngularRateX ECEF (ω_nb_e) [rad/s]
             return e_angularRateDynamics.x();
-        case 32: // AngularRateY ECEF (ω_nb_e) [rad/s]
+        case 30: // AngularRateY ECEF (ω_nb_e) [rad/s]
             return e_angularRateDynamics.y();
-        case 33: // AngularRateZ ECEF (ω_nb_e) [rad/s]
+        case 31: // AngularRateZ ECEF (ω_nb_e) [rad/s]
             return e_angularRateDynamics.z();
+        case 32: // Air Pressure [hPa]
+            if (airPressureComp.has_value()) { return airPressureComp.value(); }
+            break;
+        case 33: // Altitude NED [m]
+            if (altitudeComp.has_value()) { return altitudeComp.value(); }
+            break;
         default:
             return std::nullopt;
         }
+        return std::nullopt;
     }
 
     /// The acceleration derived from the trajectory in [m/s^2], given in the NED frame.
@@ -139,6 +146,10 @@ class ImuObsSimulated final : public ImuObsWDelta
     Eigen::Vector3d e_accelDynamics;
     /// The angular rate ω_nb_e derived from the trajectory in [rad/s], given in the ECEF frame.
     Eigen::Vector3d e_angularRateDynamics;
+    
+    std::optional<double> airPressureComp;
+    std::optional<double> altitudeComp;
+
 };
 
 } // namespace NAV

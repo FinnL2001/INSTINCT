@@ -1598,7 +1598,10 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
 
         //----------------------------------------------------AirPressure Baro------------------------------------------------------------------------
         Eigen::Vector3<Scalar> ecef_position = trafo::lla2ecef_WGS84(lla_position);
-        Eigen::Vector3<Scalar> vec = Eigen::Vector3<Scalar>::Zero();
+        Eigen::Vector3<Scalar> vec;
+        vec << _startPosition.latLonAlt().cast<Scalar>()(0),
+            _startPosition.latLonAlt().cast<Scalar>()(1),
+            static_cast<Scalar>(0);
         Eigen::Vector3<Scalar> ned_position = trafo::ecef2ned(ecef_position, vec);
 
         auto altMsl = -static_cast<double>(ned_position(2));

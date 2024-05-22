@@ -60,15 +60,13 @@ class ImuObs : public NodeData
             "Temperature [°C]",
             "Air pressure uncomp [hPa]",
             "Altitude NED uncomp [m]",
-            "Air pressure comp [hPa]",
-            "Altitude NED comp [m]"
         };
     }
 
     /// @brief Get the amount of descriptors
     [[nodiscard]] static constexpr size_t GetStaticDescriptorCount()
     {
-        return 15;
+        return 13;
     }
 
     /// @brief Returns a vector of data descriptors
@@ -112,17 +110,11 @@ class ImuObs : public NodeData
         case 10: // Temperature [°C]
             if (temperature.has_value()) { return temperature.value(); }
             break;
-        case 20: // Air Pressure [hPa]
+        case 11: // Air Pressure [hPa]
             if (airPressureUncomp.has_value()) { return airPressureUncomp.value(); }
             break;
-        case 21: // Altitude NED [m]
+        case 12: // Altitude NED [m]
             if (altitudeUncomp.has_value()) { return altitudeUncomp.value(); }
-            break;
-        case 22: // Altitude NED [m]
-            if (airPressureComp.has_value()) { return airPressureComp.value(); }
-            break;
-        case 23: // Altitude NED [m]
-            if (altitudeComp.has_value()) { return altitudeComp.value(); }
             break;
         default:
             return std::nullopt;
@@ -145,10 +137,8 @@ class ImuObs : public NodeData
 
     /// The Baro Pressure in units of [hPa]
     std::optional<double> airPressureUncomp;
-    std::optional<double> airPressureComp;
     /// The Baro altitude  in [m] given in NED Frame
     std::optional<double> altitudeUncomp;
-    std::optional<double> altitudeComp;
     /// The IMU temperature measured in units of [Celsius].
     std::optional<double> temperature = 0.0;
 };

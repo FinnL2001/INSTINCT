@@ -55,7 +55,7 @@ class ImuObsWDelta : public ImuObs
     }
 
     /// @brief Get the amount of descriptors
-    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 22; }
+    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 20; }
 
     /// @brief Returns a vector of data descriptors
     [[nodiscard]] std::vector<std::string> staticDataDescriptors() const override { return GetStaticDataDescriptors(); }
@@ -84,22 +84,20 @@ class ImuObsWDelta : public ImuObs
         case 10: // Temperature [°C]
         case 11: // Baro Air Pressure uncomp [hPa]
         case 12: // Altitude NED frame uncomp [m]
-        case 13: // Baro Air Pressure comp [hPa]
-        case 14: // Altitude NED frame comp [m]
             return ImuObs::getValueAt(idx);
-        case 15: // dTime [s]
+        case 13: // dTime [s]
             return dtime;
-        case 16: // dTheta X [deg]
+        case 14: // dTheta X [deg]
             return dtheta.x();
-        case 17: // dTheta Y [deg]
+        case 15: // dTheta Y [deg]
             return dtheta.y();
-        case 18: // dTheta Z [deg]
+        case 16: // dTheta Z [deg]
             return dtheta.z();
-        case 19: // dVelocity X [m/s]
+        case 17: // dVelocity X [m/s]
             return dvel.x();
-        case 20: // dVelocity Y [m/s]
+        case 18: // dVelocity Y [m/s]
             return dvel.y();
-        case 21: // dVelocity Z [m/s]
+        case 19: // dVelocity Z [m/s]
             return dvel.z();
         default:
             return std::nullopt;
