@@ -23,6 +23,7 @@
 #include "Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
 #include "Navigation/Transformations/CoordinateFrames.hpp"
 #include "Navigation/Constants.hpp"
+#include "Navigation/Geoid/EMG96.hpp"
 
 #include "internal/NodeManager.hpp"
 namespace nm = NAV::NodeManager;
@@ -1598,10 +1599,15 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
 
         //----------------------------------------------------AirPressure Baro------------------------------------------------------------------------
         Eigen::Vector3<Scalar> ecef_position = trafo::lla2ecef_WGS84(lla_position);
+        // Assuming Scalar is double or can be cast to double
+        auto AltOffset = static_cast<double>(egm96_compute_altitude_offset(
+            static_cast<double>(_startPosition.latLonAlt().cast<Scalar>()(0)),
+            static_cast<double>(_startPosition.latLonAlt().cast<Scalar>()(1))));
+
         Eigen::Vector3<Scalar> vec;
         vec << _startPosition.latLonAlt().cast<Scalar>()(0),
             _startPosition.latLonAlt().cast<Scalar>()(1),
-            static_cast<Scalar>(0);
+            static_cast<Scalar>(AltOffset);
         Eigen::Vector3<Scalar> ned_position = trafo::ecef2ned(ecef_position, vec);
 
         auto altMsl = -static_cast<double>(ned_position(2));
