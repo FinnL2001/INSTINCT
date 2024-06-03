@@ -23,7 +23,7 @@
 #include "Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
 #include "Navigation/Transformations/CoordinateFrames.hpp"
 #include "Navigation/Constants.hpp"
-#include "Navigation/Geoid/EMG96.hpp"
+#include "Navigation/Geoid/EGM96.hpp"
 
 #include "internal/NodeManager.hpp"
 namespace nm = NAV::NodeManager;
