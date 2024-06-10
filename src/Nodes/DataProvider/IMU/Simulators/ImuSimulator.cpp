@@ -1609,10 +1609,11 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
             _startPosition.latLonAlt().cast<Scalar>()(1),
             static_cast<Scalar>(AltOffset);
         Eigen::Vector3<Scalar> ned_position = trafo::ecef2ned(ecef_position, vec);
-
+    
         auto altMsl = -static_cast<double>(ned_position(2));
         // TODO baro auf OBS
         auto airPressure_unbiased = calcTotalPressureStAtm(altMsl);
+        auto altitude_unbiased = calcHeightStAtm(airPressure_unbiased);
 
         // ω_ib_b = b_Quat_n * ω_ib_n
         //                            = 0
@@ -1627,8 +1628,8 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
         // obs->p_magneticField.emplace(0, 0, 0);
         obs->airPressureUncomp = airPressure_unbiased;
         obs->airPressureComp = airPressure_unbiased;
-        obs->altitudeUncomp = ned_position(2);
-        obs->altitudeComp = ned_position(2);
+        obs->altitudeUncomp = altitude_unbiased;
+        obs->altitudeComp = altitude_unbiased;
 
         Eigen::Quaternion<Scalar> e_Quat_n = n_Quat_e.conjugate();
 

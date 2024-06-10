@@ -32,7 +32,7 @@ namespace NAV
 /// @return Geometric Height above MSL (mean sea level) [m]
 [[nodiscard]] constexpr double calcHeightStAtm(double pressure)
 {
-    return (6356.75 * 1000 * (44.300 * (1-gcem::pow(pressure / 1013.25, 0.19)) * 1000))/((6356.75 * 1000)-(44.300 * (1-gcem::pow(pressure / 1013.25, 0.19)) * 1000));
+    return 44.300 * (1-gcem::pow(pressure / 1013.25, 0.19)) * 1000;
 }
 
 
