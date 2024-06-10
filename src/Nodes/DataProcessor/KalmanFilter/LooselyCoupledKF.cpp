@@ -378,7 +378,30 @@ void NAV::LooselyCoupledKF::guiConfig()
 
             ImGui::TreePop();
         }
+        //###########################################################################################################
+        //                                         R Baro Error covariance matrix
+        //############################################################################################################
+        ImGui::SetNextItemOpen(true, ImGuiCond_FirstUseEver);
+        if (ImGui::TreeNode(fmt::format("R - Baro Measurement noise covariance matrix##{}", size_t(id)).c_str()))
+        {
+            if (gui::widgets::InputDoubleWithUnit(fmt::format("{} of the Baro Height measurements##{}",
+                                                              _baroMeasurementUncertaintyUnit == BaroMeasurementUncertaintyUnit::m
+                                                                      || _baroMeasurementUncertaintyUnit == BaroMeasurementUncertaintyUnit::m2
+                                                                  ? "Variance"
+                                                                  : "Standard deviation",
+                                                              size_t(id))
+                                                      .c_str(),
+                                                  configWidth, unitWidth, &_baroMeasurementUncertainty, reinterpret_cast<int*>(&_baroMeasurementUncertaintyUnit), " m^2\0"
+                                                                                                                                                                  "m\0\0",
+                                                  0.5, 1, "%.2e", ImGuiInputTextFlags_CharsScientific))
+            {
+                LOG_DEBUG("{}: baroMeasurementUncertaintyPosition changed to {}", nameId(), _baroMeasurementUncertainty);
+                LOG_DEBUG("{}: gnsBaroMeasurementUncertaintyPositionUnit changed to {}", nameId(), fmt::underlying(_baroMeasurementUncertaintyUnit));
+                flow::ApplyChanges();
+            }
 
+            ImGui::TreePop();
+        }
         // ###########################################################################################################
         //                                        𝐏 Error covariance matrix
         // ###########################################################################################################

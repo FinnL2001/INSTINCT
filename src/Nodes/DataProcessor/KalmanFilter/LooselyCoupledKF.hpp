@@ -108,6 +108,8 @@ class LooselyCoupledKF : public Node
         dVelX = dVelN,   ///< ECEF Velocity X difference
         dVelY = dVelE,   ///< ECEF Velocity Y difference
         dVelZ = dVelD,   ///< ECEF Velocity Z difference
+
+        dAltMsl = dPosAlt, ///< Alt at MSL diff
     };
 
   private:
@@ -206,6 +208,8 @@ class LooselyCoupledKF : public Node
     inline static const std::vector<KFMeas> dPos = { KFMeas::dPosLat, KFMeas::dPosLon, KFMeas::dPosAlt };
     /// @brief All velocity difference keys
     inline static const std::vector<KFMeas> dVel = { KFMeas::dVelN, KFMeas::dVelE, KFMeas::dVelD };
+    /// @brief Vector with only Baro keys
+    inline static const std::vector<KFMeas> MeasBaro = { KFMeas::dAltMsl };
 
     /// Kalman Filter representation
     KeyedKalmanFilterD<KFStates, KFMeas> _kalmanFilter{ States, Meas };
@@ -343,7 +347,19 @@ class LooselyCoupledKF : public Node
 
     /// GUI selection of the GNSS NED velocity measurement uncertainty (standard deviation σ or Variance σ²)
     Eigen::Vector3d _gnssMeasurementUncertaintyVelocity{ 0.5, 0.5, 0.5 };
+    /// ##########################################################################################################
 
+    /// Possible Units for Baro measurement unertainty for the height (standard deviation σ or Variance σ²)
+    enum class BaroMeasurementUncertaintyUnit
+    {
+        m2, ///< Variance [m²]
+        m,  ///< Standard deviation [m]
+    };
+    /// Gui selection for the Unit of the Baro measurement uncertainty
+    BaroMeasurementUncertaintyUnit _baroMeasurementUncertaintyUnit = BaroMeasurementUncertaintyUnit::m;
+
+    /// GUI selection of the Baro measurement uncertainty
+    double _baroMeasurementUncertainty = 0.5;
     // ###########################################################################################################
 
     /// Possible Units for the initial covariance for the position (standard deviation σ or Variance σ²)
@@ -613,6 +629,10 @@ class LooselyCoupledKF : public Node
                                                                                             const Eigen::Vector3d& b_leverArm_InsGnss,
                                                                                             const Eigen::Matrix3d& n_Omega_ie);
 
+    /// @brief Measurement matrix for Baro measurements at timestep k, represented in navigation coordinates
+    /// @return The 1x15 measurement matrix 𝐇
+    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 1, 15> n_baroMeasurementMatrix_H();
+
     /// @brief Measurement matrix for GNSS measurements at timestep k, represented in Earth frame coordinates
     /// @param[in] e_Dcm_b Direction Cosine Matrix from body to Earth coordinates
     /// @param[in] b_omega_ib Angular rate of body with respect to inertial system in body-frame coordinates in [rad/s]
@@ -630,6 +650,11 @@ class LooselyCoupledKF : public Node
     /// @return The 6x6 measurement covariance matrix 𝐑
     [[nodiscard]] static KeyedMatrix<double, KFMeas, KFMeas, 6, 6> n_measurementNoiseCovariance_R(const Eigen::Vector3d& gnssVarianceLatLonAlt,
                                                                                                   const Eigen::Vector3d& gnssVarianceVelocity);
+
+    /// @brief Measurement noise covariance matrix 𝐑 for Baro Measurement
+    /// @param[in] BaroVarianceAltitude Variances of the velocity in [m²]
+    /// @return The 1x1 measurement covariance matrix 𝐑
+    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFMeas, 1, 1> n_baroMeasurementNoiseCovariance_R(const double BaroVarianceAltitude);
 
     /// @brief Measurement noise covariance matrix 𝐑
     /// @param[in] gnssVariancePosition Variances of the position in [m²]
@@ -653,6 +678,12 @@ class LooselyCoupledKF : public Node
                                                                                    const Eigen::Vector3d& n_velocityMeasurement, const Eigen::Vector3d& n_velocityEstimate,
                                                                                    const Eigen::Matrix3d& T_rn_p, const Eigen::Quaterniond& n_Quat_b, const Eigen::Vector3d& b_leverArm_InsGnss,
                                                                                    const Eigen::Vector3d& b_omega_ib, const Eigen::Matrix3d& n_Omega_ie);
+
+    /// @brief Measurement innovation vector 𝜹𝐳
+    /// @param[in] baroHeightMeasurement Baro Altitude (Geoid height) Mesurment in [m]
+    /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
+    /// @return The 1x1 measurement innovation vector 𝜹𝐳
+    [[nodiscard]] static KeyedVector<double, KFMeas, 1> n_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate);
 
     /// @brief Measurement innovation vector 𝜹𝐳
     /// @param[in] e_positionMeasurement Position measurement in ECEF coordinates in [m]
