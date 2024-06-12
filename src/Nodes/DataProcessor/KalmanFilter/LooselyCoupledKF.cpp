@@ -594,6 +594,9 @@ void NAV::LooselyCoupledKF::guiConfig()
     j["gnssMeasurementUncertaintyVelocityUnit"] = _gnssMeasurementUncertaintyVelocityUnit;
     j["gnssMeasurementUncertaintyVelocity"] = _gnssMeasurementUncertaintyVelocity;
 
+    j["baroMeasurementUncertainty"] = _baroMeasurementUncertainty;
+    j["baroMeasurementUncertaintyUnit"] = _baroMeasurementUncertaintyUnit;
+
     j["initCovariancePositionUnit"] = _initCovariancePositionUnit;
     j["initCovariancePosition"] = _initCovariancePosition;
     j["initCovarianceVelocityUnit"] = _initCovarianceVelocityUnit;
@@ -725,6 +728,15 @@ void NAV::LooselyCoupledKF::restore(json const& j)
     if (j.contains("gnssMeasurementUncertaintyVelocity"))
     {
         _gnssMeasurementUncertaintyVelocity = j.at("gnssMeasurementUncertaintyVelocity");
+    }
+    //--------------------------------------- R BaroMeasurement Noise covariance matrix --------------------------
+    if (j.contains("baroMeasurementUncertaintyUnit"))
+    {
+        j.at("baroMeasurementUncertaintyUnit").get_to(_baroMeasurementUncertaintyUnit);
+    }
+    if (j.contains("baroMeasurementUncertainty"))
+    {
+        _baroMeasurementUncertainty = j.at("baroMeasurementUncertainty");
     }
     // -------------------------------------- 𝐏 Error covariance matrix -----------------------------------------
     if (j.contains("initCovariancePositionUnit"))
@@ -1611,6 +1623,105 @@ void NAV::LooselyCoupledKF::looselyCoupledUpdate(const std::shared_ptr<const Pos
     {
         _kalmanFilter.x(all).setZero();
     }
+
+    invokeCallbacks(OUTPUT_PORT_INDEX_SOLUTION, lckfSolution);
+}
+
+void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
+{
+    const auto& latestInertialNavSol = _inertialIntegrator.getLatestState().value().get();
+    double baroSigmaSquared = 0;
+    const Eigen::Vector3d& lla_position = latestInertialNavSol.lla_position();
+    switch (_baroMeasurementUncertaintyUnit)
+    {
+    case BaroMeasurementUncertaintyUnit::m:
+        baroSigmaSquared = std::pow(_baroMeasurementUncertainty, 2);
+        break;
+    case BaroMeasurementUncertaintyUnit::m2:
+        baroSigmaSquared = _baroMeasurementUncertainty;
+        break;
+    }
+
+    if (_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED)
+    {
+        _kalmanFilter.H = n_baroMeasurementMatrix_H();
+        _kalmanFilter.R = n_baroMeasurementNoiseCovariance_R(baroSigmaSquared);
+        _kalmanFilter.z = n_baroMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position);
+    }
+    else // InertialIntegrator::IntegrationFrame::ECEF #TODO
+    {
+    }
+
+    if (_checkKalmanMatricesRanks)
+    {
+        Eigen::FullPivLU<Eigen::MatrixXd> lu(_kalmanFilter.H(all, all) * _kalmanFilter.P(all, all) * _kalmanFilter.H(all, all).transpose() + _kalmanFilter.R(all, all));
+        auto rank = lu.rank();
+        if (rank != _kalmanFilter.H(all, all).rows())
+        {
+            LOG_WARN("{}: (HPH^T + R).rank = {}", nameId(), rank);
+        }
+    }
+
+    _kalmanFilter.correctWithMeasurementInnovation();
+
+    LOG_DATA("{}:     KF.K =\n{}", nameId(), _kalmanFilter.K);
+    LOG_DATA("{}:     KF.x =\n{}", nameId(), _kalmanFilter.x);
+    LOG_DATA("{}:     KF.P =\n{}", nameId(), _kalmanFilter.P);
+
+    if (_checkKalmanMatricesRanks)
+    {
+        Eigen::FullPivLU<Eigen::MatrixXd> lu(_kalmanFilter.H(all, all) * _kalmanFilter.P(all, all) * _kalmanFilter.H(all, all).transpose() + _kalmanFilter.R(all, all));
+        auto rank = lu.rank();
+        if (rank != _kalmanFilter.H(all, all).rows())
+        {
+            LOG_WARN("{}: (HPH^T + R).rank = {}", nameId(), rank);
+        }
+
+        Eigen::FullPivLU<Eigen::MatrixXd> luP(_kalmanFilter.P(all, all));
+        rank = luP.rank();
+        if (rank != _kalmanFilter.P(all, all).rows())
+        {
+            LOG_WARN("{}: P.rank = {}", nameId(), rank);
+        }
+    }
+
+    // LOG_DEBUG("{}: H\n{}\n", nameId(), _kalmanFilter.H);
+    // LOG_DEBUG("{}: R\n{}\n", nameId(), _kalmanFilter.R);
+    // LOG_DEBUG("{}: z =\n{}", nameId(), _kalmanFilter.z.transposed());
+
+    // LOG_DEBUG("{}: K\n{}\n", nameId(), _kalmanFilter.K);
+    // LOG_DEBUG("{}: x =\n{}", nameId(), _kalmanFilter.x.transposed());
+    // LOG_DEBUG("{}: P\n{}\n", nameId(), _kalmanFilter.P);
+
+    // LOG_DEBUG("{}: K * z =\n{}", nameId(), (_kalmanFilter.K(all, all) * _kalmanFilter.z(all)).transpose());
+
+    // LOG_DEBUG("{}: P - P^T\n{}\n", nameId(), _kalmanFilter.P(all, all) - _kalmanFilter.P(all, all).transpose());
+
+    // Push out the new data
+    auto lckfSolution = std::make_shared<InsGnssLCKFSolution>();
+    lckfSolution->insTime = _lastImuObs->insTime;
+    lckfSolution->positionError = _kalmanFilter.x.segment<3>(Pos);
+    lckfSolution->velocityError = _kalmanFilter.x.segment<3>(Vel);
+    lckfSolution->attitudeError = _kalmanFilter.x.segment<3>(Att) * (1. / SCALE_FACTOR_ATTITUDE);
+
+    _inertialIntegrator.applySensorBiasesIncrements(_lastImuObs->imuPos.p_quatAccel_b() * -_kalmanFilter.x.segment<3>(AccBias) * (1. / SCALE_FACTOR_ACCELERATION),
+                                                    _lastImuObs->imuPos.p_quatGyro_b() * -_kalmanFilter.x.segment<3>(GyrBias) * (1. / SCALE_FACTOR_ANGULAR_RATE));
+    lckfSolution->b_biasAccel = _inertialIntegrator.p_getLastAccelerationBias();
+    lckfSolution->b_biasGyro = _inertialIntegrator.p_getLastAngularRateBias();
+
+    if (_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED)
+    {
+        lckfSolution->positionError = lckfSolution->positionError.array() * Eigen::Array3d(1. / SCALE_FACTOR_LAT_LON, 1. / SCALE_FACTOR_LAT_LON, 1);
+        lckfSolution->frame = InsGnssLCKFSolution::Frame::NED;
+        _inertialIntegrator.applyStateErrors_n(lckfSolution->positionError, lckfSolution->velocityError, lckfSolution->attitudeError);
+        const auto& state = _inertialIntegrator.getLatestState().value().get();
+        lckfSolution->setState_n(state.lla_position(), state.n_velocity(), state.n_Quat_b());
+    }
+    else // if (_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::ECEF)
+    {
+    }
+
+    _kalmanFilter.x(all).setZero();
 
     invokeCallbacks(OUTPUT_PORT_INDEX_SOLUTION, lckfSolution);
 }

@@ -161,6 +161,9 @@ class LooselyCoupledKF : public Node
     /// @param[in] posVelObs PosVel measurement triggering the update
     void looselyCoupledUpdate(const std::shared_ptr<const PosVel>& posVelObs);
 
+    /// @brief Updates the predicted state from the InertialNavSol with the ImuPos Baro observation
+    void looselyCoupledBaroUpdate();
+
     /// @brief Add the output pins for the Kalman matrices
     void addKalmanMatricesPins();
 
