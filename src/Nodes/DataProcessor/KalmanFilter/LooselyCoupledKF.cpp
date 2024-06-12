@@ -33,6 +33,7 @@ namespace nm = NAV::NodeManager;
 #include "Navigation/Transformations/Units.hpp"
 #include "util/Logger.hpp"
 #include "util/Assert.h"
+#include "Navigation/Geoid/EGM96.hpp"
 
 #include "NodeData/IMU/ImuObsWDelta.hpp"
 #include "NodeData/State/PosVelAtt.hpp"
@@ -1922,6 +1923,15 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::K
     return H;
 }
 
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 15>
+    NAV::LooselyCoupledKF::n_baroMeasurementMatrix_H()
+{
+    NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 15> H(Eigen::Matrix<double, 1, 15>::Zero(), MeasBaro, States);
+    H(dAltMsl, PosAlt) = -1.0;
+
+    return H;
+}
+
 NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 6, 15>
     NAV::LooselyCoupledKF::e_measurementMatrix_H(const Eigen::Matrix3d& e_Dcm_b, const Eigen::Vector3d& b_omega_ib, const Eigen::Vector3d& b_leverArm_InsGnss, const Eigen::Matrix3d& e_Omega_ie)
 {
@@ -1944,6 +1954,15 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::K
     H.middleCols<3>(GyrBias) *= 1. / SCALE_FACTOR_ANGULAR_RATE;
 
     return H;
+}
+
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFMeas, 1, 1>
+    NAV::LooselyCoupledKF::n_baroMeasurementNoiseCovariance_R(const double BaroVarianceAltitude)
+{
+    KeyedMatrix<double, KFMeas, KFMeas, 1, 1> R(Eigen::Matrix<double, 1, 1>::Zero(), MeasBaro);
+    R(dAltMsl, dAltMsl) = BaroVarianceAltitude;
+
+    return R;
 }
 
 NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFMeas, 6, 6>
@@ -1986,6 +2005,19 @@ NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 6>
     innovation << deltaLLA, deltaVel;
 
     return { innovation, Meas };
+}
+
+NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
+    NAV::LooselyCoupledKF::n_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate)
+{
+    // TODO
+    double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
+    double deltaAlt = baroHeightMeasurement - lla_positionEstimate(2) + geoidHeight;
+
+    Eigen::Matrix<double, 1, 1> innovation;
+    innovation << deltaAlt;
+
+    return { innovation, MeasBaro };
 }
 
 NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 6>

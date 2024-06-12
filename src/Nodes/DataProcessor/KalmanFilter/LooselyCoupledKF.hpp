@@ -652,7 +652,7 @@ class LooselyCoupledKF : public Node
                                                                                                   const Eigen::Vector3d& gnssVarianceVelocity);
 
     /// @brief Measurement noise covariance matrix 𝐑 for Baro Measurement
-    /// @param[in] BaroVarianceAltitude Variances of the velocity in [m²]
+    /// @param[in] BaroVarianceAltitude Variances of the height in [m²]
     /// @return The 1x1 measurement covariance matrix 𝐑
     [[nodiscard]] static KeyedMatrix<double, KFMeas, KFMeas, 1, 1> n_baroMeasurementNoiseCovariance_R(const double BaroVarianceAltitude);
 
