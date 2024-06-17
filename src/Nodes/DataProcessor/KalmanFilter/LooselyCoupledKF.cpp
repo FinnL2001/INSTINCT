@@ -141,7 +141,14 @@ void NAV::LooselyCoupledKF::guiConfig()
     float unitWidth = 150.0F * gui::NodeEditorApplication::windowFontRatio();
 
     float taylorOrderWidth = 75.0F * gui::NodeEditorApplication::windowFontRatio();
-
+    if (ImGui::CollapsingHeader(fmt::format("Use the Barometer as a second Measurement?##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (ImGui::Checkbox(fmt::format("Second Measurement?##{}", size_t(id)).c_str(), &_useBarometer))
+        {
+            updateExternalPvaInitPin();
+            flow::ApplyChanges();
+        }
+    }
     if (ImGui::CollapsingHeader(fmt::format("Initialization##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
     {
         if (ImGui::Checkbox(fmt::format("Initialize over pin##{}", size_t(id)).c_str(), &_initializeStateOverExternalPin))
@@ -568,6 +575,7 @@ void NAV::LooselyCoupledKF::guiConfig()
     j["preferAccelerationOverDeltaMeasurements"] = _preferAccelerationOverDeltaMeasurements;
     j["initalRollPitchYaw"] = _initalRollPitchYaw;
     j["initializeStateOverExternalPin"] = _initializeStateOverExternalPin;
+    j["useBarometer"] = _useBarometer;
 
     j["showKalmanFilterOutputPins"] = _showKalmanFilterOutputPins;
     j["checkKalmanMatricesRanks"] = _checkKalmanMatricesRanks;
@@ -990,6 +998,10 @@ void NAV::LooselyCoupledKF::recvImuObservation(InputPin::NodeDataQueue& queue, s
         LOG_DATA("{}:   e_position   = {}", nameId(), inertialNavSol->e_position().transpose());
         LOG_DATA("{}:   e_velocity   = {}", nameId(), inertialNavSol->e_velocity().transpose());
         LOG_DATA("{}:   rollPitchYaw = {}", nameId(), rad2deg(inertialNavSol->rollPitchYaw()).transpose());
+        if (_useBarometer)
+        {
+            looselyCoupledBaroUpdate();
+        }
         invokeCallbackWithPosVelAtt(*inertialNavSol);
     }
 }
@@ -1396,7 +1408,7 @@ void NAV::LooselyCoupledKF::looselyCoupledUpdate(const std::shared_ptr<const Pos
     LOG_DATA("{}:     gnssSigmaSquaredVelocity = {} [m^2/S^2]", nameId(), gnssSigmaSquaredVelocity.transpose());
 
     // ---------------------------------------------- Correction -------------------------------------------------
-
+    _kalmanFilter.setMeasurements(Meas);
     auto p_omega_ip = _inertialIntegrator.p_calcCurrentAngularRate();
     // Angular rate measured in units of [rad/s], and given in the body frame
     Eigen::Vector3d b_omega_ip = p_omega_ip
@@ -1644,6 +1656,7 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
 
     if (_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED)
     {
+        _kalmanFilter.setMeasurements(MeasBaro);
         _kalmanFilter.H = n_baroMeasurementMatrix_H();
         _kalmanFilter.R = n_baroMeasurementNoiseCovariance_R(baroSigmaSquared);
         _kalmanFilter.z = n_baroMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position);

@@ -185,6 +185,8 @@ class LooselyCoupledKF : public Node
     std::array<double, 3> _initalRollPitchYaw{};
     /// Whether to initialize the state over an external pin
     bool _initializeStateOverExternalPin{};
+    /// Use The Barometer as a second Mesurment?
+    bool _useBarometer{};
     /// Time from the external init
     InsTime _externalInitTime;
 
