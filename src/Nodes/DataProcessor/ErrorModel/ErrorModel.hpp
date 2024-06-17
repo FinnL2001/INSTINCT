@@ -204,6 +204,8 @@ class ErrorModel : public Node
     {
         hPa,  ///< [hPa] (Standard deviation)
         hPa2, ///< [hPa²] (Variance)
+        m, ///<[m] (Standard deviation)
+        m2 ///<[m2] (Variance)
     };
     ImuBarometerNoiseUnits _imuBarometerNoiseUnit = ImuBarometerNoiseUnits::hPa;
     double _imuBarometerNoise = 0.0;

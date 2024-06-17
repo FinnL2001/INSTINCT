@@ -205,7 +205,7 @@ void NAV::ErrorModel::guiConfig()
                                                                       ? "Standard deviation"
                                                                       : "Variance")
                                   .c_str(),
-                              _imuBarometerNoise, _imuBarometerNoiseUnit, "hPa\0 hPa^2\0\0", "%.2g", _imuBarometerRng);
+                              _imuBarometerNoise, _imuBarometerNoiseUnit, "hPa\0 hPa^2\0 m\0 m^2\0\0", "%.2g", _imuBarometerRng);
 
                 if (_inputType == InputType::ImuObsWDelta)
                 {
@@ -714,6 +714,12 @@ std::shared_ptr<NAV::ImuObs> NAV::ErrorModel::receiveImuObs(const std::shared_pt
     case ImuBarometerNoiseUnits::hPa2:
         barometerNoiseStd = Eigen::numext::sqrt(_imuBarometerNoise);
         break;
+    case ImuBarometerNoiseUnits::m:
+        barometerNoiseStd = _imuBarometerNoise;
+        break;
+    case ImuBarometerNoiseUnits::m2:
+        barometerNoiseStd = Eigen::numext::sqrt(_imuBarometerNoise);
+        break;
     }
 
     // Gyroscope Noise standard deviation in platform frame coordinates [rad/s]
@@ -755,8 +761,22 @@ std::shared_ptr<NAV::ImuObs> NAV::ErrorModel::receiveImuObs(const std::shared_pt
     imuObs->altitudeUncomp.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
     imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
 
-    imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
-    imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
+    switch (_imuBarometerNoiseUnit)
+    {
+    case ImuBarometerNoiseUnits::hPa:
+    case ImuBarometerNoiseUnits::hPa2:
+        imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
+        imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
+        break;
+    case ImuBarometerNoiseUnits::m:
+    case ImuBarometerNoiseUnits::m2:
+        imuObs->altitudeUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
+        //imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
+        break;
+    }
+
+    // imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
+    // imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
 
     return imuObs;
 }
