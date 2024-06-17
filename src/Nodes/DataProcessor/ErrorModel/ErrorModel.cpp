@@ -771,7 +771,7 @@ std::shared_ptr<NAV::ImuObs> NAV::ErrorModel::receiveImuObs(const std::shared_pt
     case ImuBarometerNoiseUnits::m:
     case ImuBarometerNoiseUnits::m2:
         imuObs->altitudeUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
-        //imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
+        imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
         break;
     }
 
