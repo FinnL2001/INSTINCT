@@ -994,14 +994,13 @@ void NAV::LooselyCoupledKF::recvImuObservation(InputPin::NodeDataQueue& queue, s
     if (inertialNavSol && _inertialIntegrator.getMeasurements().back().dt > 1e-8)
     {
         looselyCoupledPrediction(inertialNavSol, _inertialIntegrator.getMeasurements().back().dt, std::static_pointer_cast<const ImuObs>(nodeData)->imuPos);
-
-        LOG_DATA("{}:   e_position   = {}", nameId(), inertialNavSol->e_position().transpose());
-        LOG_DATA("{}:   e_velocity   = {}", nameId(), inertialNavSol->e_velocity().transpose());
-        LOG_DATA("{}:   rollPitchYaw = {}", nameId(), rad2deg(inertialNavSol->rollPitchYaw()).transpose());
         if (_useBarometer)
         {
             looselyCoupledBaroUpdate();
         }
+        LOG_DATA("{}:   e_position   = {}", nameId(), inertialNavSol->e_position().transpose());
+        LOG_DATA("{}:   e_velocity   = {}", nameId(), inertialNavSol->e_velocity().transpose());
+        LOG_DATA("{}:   rollPitchYaw = {}", nameId(), rad2deg(inertialNavSol->rollPitchYaw()).transpose());
         invokeCallbackWithPosVelAtt(*inertialNavSol);
     }
 }
