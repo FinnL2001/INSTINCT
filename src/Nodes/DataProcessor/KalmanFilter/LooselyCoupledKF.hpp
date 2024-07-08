@@ -173,6 +173,30 @@ class LooselyCoupledKF : public Node
     /// Add or remove the external PVA Init pin
     void updateExternalPvaInitPin();
 
+    /// @brief Used for baroCalibration inside the LCKF
+    /// @param Tstart Temprature at Takeoff [K]
+    /// @param Pstart Preassure at Takeoff [hPa]
+    /// @param Hstart Height at Takeoff [m]
+    // void calibarationBaro(double Tstart, double Pstart, double Hstart);
+
+    /// Temprature at Takeoff [K]
+    // double _Tstart=0;
+
+    ///  Preassure at Takeoff [hPa]
+    // double _Pstart=0;
+
+    ///  Height at Takeoff [m]
+    // double _Hstart=0;
+
+    /// Use calibarationBaro
+    // bool _useCaliBaro = false;
+
+    /// Use Pstart otherwise the first baro Measurment will be used
+    // bool _usePstart = false;
+
+    /// Use Pstart otherwise the first GPS Height Measurment will be used
+    // bool _useHstart = false;
+
     /// @brief Inertial Integrator
     InertialIntegrator _inertialIntegrator;
     /// Prefer the raw acceleration measurements over the deltaVel & deltaTheta values
