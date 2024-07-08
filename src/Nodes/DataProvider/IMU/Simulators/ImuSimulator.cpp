@@ -131,7 +131,12 @@ void NAV::ImuSimulator::guiConfig()
             LOG_DEBUG("{}: gnssFrequency changed to {}", nameId(), _gnssFrequency);
             flow::ApplyChanges();
         }
-
+        if (ImGui::InputInt("Test Int", &_baromeasurmentIteration))
+        {
+            flow::ApplyChanges();
+        }
+        ImGui::SameLine();
+        gui::widgets::HelpMarker("every Iteration of the imu measurment a baro measurment is made");
         ImGui::TreePop();
     }
 
@@ -660,6 +665,7 @@ json NAV::ImuSimulator::save() const
     j["imuInternalFrequency"] = _imuInternalFrequency;
     j["imuFrequency"] = _imuFrequency;
     j["gnssFrequency"] = _gnssFrequency;
+    j["baromeasurmentIteration"] = _baromeasurmentIteration;
     // ###########################################################################################################
     j["trajectoryType"] = _trajectoryType;
     j["startPosition"] = _startPosition;
@@ -722,6 +728,10 @@ void NAV::ImuSimulator::restore(json const& j)
     if (j.contains("gnssFrequency"))
     {
         j.at("gnssFrequency").get_to(_gnssFrequency);
+    }
+    if (j.contains("baromeasurmentIteration"))
+    {
+        j.at("baromeasurmentIteration").get_to(_baromeasurmentIteration);
     }
     // ###########################################################################################################
     if (j.contains("trajectoryType"))
@@ -1422,6 +1432,7 @@ bool NAV::ImuSimulator::resetNode()
 
     _imuLastUpdateTime = 0.0;
     _gnssLastUpdateTime = 0.0;
+    _iterationCounter = 0;
     _lla_imuLastLinearPosition = _startPosition.latLonAlt().cast<Scalar>();
     _lla_gnssLastLinearPosition = _startPosition.latLonAlt().cast<Scalar>();
 
@@ -1609,7 +1620,7 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
             _startPosition.latLonAlt().cast<Scalar>()(1),
             static_cast<Scalar>(AltOffset);
         Eigen::Vector3<Scalar> ned_position = trafo::ecef2ned(ecef_position, vec);
-    
+
         auto altMsl = -static_cast<double>(ned_position(2));
         // TODO baro auf OBS
         auto airPressure_unbiased = calcTotalPressureStAtm(altMsl);
@@ -1626,11 +1637,22 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
         obs->p_acceleration = p_accel.cast<double>();
         obs->p_angularRate = p_omega_ip.cast<double>();
         // obs->p_magneticField.emplace(0, 0, 0);
-        obs->airPressureUncomp = airPressure_unbiased;
-        obs->airPressureComp = airPressure_unbiased;
-        obs->altitudeUncomp = altitude_unbiased;
-        obs->altitudeComp = altitude_unbiased;
-
+        if ((_baromeasurmentIteration) == (_iterationCounter) || _iterationCounter == 0)
+        {
+            obs->airPressureUncomp = airPressure_unbiased;
+            obs->airPressureComp = airPressure_unbiased;
+            obs->altitudeUncomp = altitude_unbiased;
+            obs->altitudeComp = altitude_unbiased;
+            _iterationCounter = 1;
+        }
+        else
+        {
+            obs->airPressureUncomp = std::nullopt;
+            obs->airPressureComp = std::nullopt;
+            obs->altitudeUncomp = std::nullopt;
+            obs->altitudeComp = std::nullopt;
+            _iterationCounter = _iterationCounter + 1;
+        }
         Eigen::Quaternion<Scalar> e_Quat_n = n_Quat_e.conjugate();
 
         obs->n_accelDynamics = n_trajectoryAccel.cast<double>();

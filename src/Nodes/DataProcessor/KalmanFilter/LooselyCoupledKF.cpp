@@ -996,7 +996,10 @@ void NAV::LooselyCoupledKF::recvImuObservation(InputPin::NodeDataQueue& queue, s
         looselyCoupledPrediction(inertialNavSol, _inertialIntegrator.getMeasurements().back().dt, std::static_pointer_cast<const ImuObs>(nodeData)->imuPos);
         if (_useBarometer)
         {
-            looselyCoupledBaroUpdate();
+            if (_lastImuObs->getValueAt(12).has_value())
+            {
+                looselyCoupledBaroUpdate();
+            }
         }
         LOG_DATA("{}:   e_position   = {}", nameId(), inertialNavSol->e_position().transpose());
         LOG_DATA("{}:   e_velocity   = {}", nameId(), inertialNavSol->e_velocity().transpose());

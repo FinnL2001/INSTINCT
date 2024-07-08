@@ -126,6 +126,10 @@ class ImuSimulator : public Imu
     double _imuFrequency = 100;
     /// Frequency to sample the position with in [Hz]
     double _gnssFrequency = 5;
+    ///  every Iteration of the imu measurment a baro measurment is made
+    int _baromeasurmentIteration = 1;
+    /// counts the iterations for baro measurment
+    int _iterationCounter = 0;
 
     // ###########################################################################################################
 
