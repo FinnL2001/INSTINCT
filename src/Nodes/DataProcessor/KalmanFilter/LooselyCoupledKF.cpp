@@ -1646,6 +1646,7 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
     const auto& latestInertialNavSol = _inertialIntegrator.getLatestState().value().get();
     double baroSigmaSquared = 0;
     const Eigen::Vector3d& lla_position = latestInertialNavSol.lla_position();
+    const Eigen::Vector3d& e_position = latestInertialNavSol.e_position();
     switch (_baroMeasurementUncertaintyUnit)
     {
     case BaroMeasurementUncertaintyUnit::m:
@@ -1660,11 +1661,15 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
     {
         _kalmanFilter.setMeasurements(MeasBaro);
         _kalmanFilter.H = n_baroMeasurementMatrix_H();
-        _kalmanFilter.R = n_baroMeasurementNoiseCovariance_R(baroSigmaSquared);
+        _kalmanFilter.R = baroMeasurementNoiseCovariance_R(baroSigmaSquared);
         _kalmanFilter.z = n_baroMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position);
     }
     else // InertialIntegrator::IntegrationFrame::ECEF #TODO
     {
+        _kalmanFilter.setMeasurements(MeasBaro);
+        _kalmanFilter.H = e_baroMeasurementMatrix_H(lla_position);
+        _kalmanFilter.R = baroMeasurementNoiseCovariance_R(baroSigmaSquared);
+        _kalmanFilter.z = e_baroMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position, e_position);
     }
 
     if (_checkKalmanMatricesRanks)
@@ -2057,6 +2062,19 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::K
 
     return H;
 }
+//#TODO
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 15>
+    NAV::LooselyCoupledKF::e_baroMeasurementMatrix_H(const Eigen::Vector3d& lla_positionEstimate)
+{
+    double latitude = lla_positionEstimate[0];
+    double longitude = lla_positionEstimate[1];
+
+    NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 15> H(Eigen::Matrix<double, 1, 15>::Zero(), MeasBaro, States);
+    H(dAltMsl, PosX) = -std::cos(latitude) * std::cos(longitude);
+    H(dAltMsl, PosY) = -std::cos(latitude) * std::sin(longitude);
+    H(dAltMsl, PosZ) = -std::sin(latitude);
+    return H;
+}
 
 NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 6, 15>
     NAV::LooselyCoupledKF::e_measurementMatrix_H(const Eigen::Matrix3d& e_Dcm_b, const Eigen::Vector3d& b_omega_ib, const Eigen::Vector3d& b_leverArm_InsGnss, const Eigen::Matrix3d& e_Omega_ie)
@@ -2083,7 +2101,7 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::K
 }
 
 NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFMeas, 1, 1>
-    NAV::LooselyCoupledKF::n_baroMeasurementNoiseCovariance_R(const double BaroVarianceAltitude)
+    NAV::LooselyCoupledKF::baroMeasurementNoiseCovariance_R(const double BaroVarianceAltitude)
 {
     KeyedMatrix<double, KFMeas, KFMeas, 1, 1> R(Eigen::Matrix<double, 1, 1>::Zero(), MeasBaro);
     R(dAltMsl, dAltMsl) = BaroVarianceAltitude;
@@ -2139,6 +2157,22 @@ NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
     // TODO
     double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
     double deltaAlt = baroHeightMeasurement - lla_positionEstimate(2) + geoidHeight;
+
+    Eigen::Matrix<double, 1, 1> innovation;
+    innovation << deltaAlt;
+
+    return { innovation, MeasBaro };
+}
+
+NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
+    NAV::LooselyCoupledKF::e_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate)
+{
+    // TODO
+    double lat = lla_positionEstimate(0);
+    double lon = lla_positionEstimate(1);
+    double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
+    double control = (std::sin(lat) * e_positionEstimate(2) + std::cos(lat) * std::cos(lon) * e_positionEstimate(0) + std::cos(lat) * std::sin(lon) * e_positionEstimate(1));
+    double deltaAlt = baroHeightMeasurement - control + geoidHeight;
 
     Eigen::Matrix<double, 1, 1> innovation;
     innovation << deltaAlt;

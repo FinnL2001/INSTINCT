@@ -173,6 +173,30 @@ class LooselyCoupledKF : public Node
     /// Add or remove the external PVA Init pin
     void updateExternalPvaInitPin();
 
+    /// @brief Used for baroCalibration inside the LCKF
+    /// @param Tstart Temprature at Takeoff [K]
+    /// @param Pstart Preassure at Takeoff [hPa]
+    /// @param Hstart Height at Takeoff [m]
+    // void calibarationBaro(double Tstart, double Pstart, double Hstart);
+
+    /// Temprature at Takeoff [K]
+    // double _Tstart=0;
+
+    ///  Preassure at Takeoff [hPa]
+    // double _Pstart=0;
+
+    ///  Height at Takeoff [m]
+    // double _Hstart=0;
+
+    /// Use calibarationBaro
+    // bool _useCaliBaro = false;
+
+    /// Use Pstart otherwise the first baro Measurment will be used
+    // bool _usePstart = false;
+
+    /// Use Pstart otherwise the first GPS Height Measurment will be used
+    // bool _useHstart = false;
+
     /// @brief Inertial Integrator
     InertialIntegrator _inertialIntegrator;
     /// Prefer the raw acceleration measurements over the deltaVel & deltaTheta values
@@ -213,7 +237,7 @@ class LooselyCoupledKF : public Node
     inline static const std::vector<KFMeas> dPos = { KFMeas::dPosLat, KFMeas::dPosLon, KFMeas::dPosAlt };
     /// @brief All velocity difference keys
     inline static const std::vector<KFMeas> dVel = { KFMeas::dVelN, KFMeas::dVelE, KFMeas::dVelD };
-    /// @brief Vector with only Baro keys
+    /// @brief Vector with only Baro keys for n-system
     inline static const std::vector<KFMeas> MeasBaro = { KFMeas::dAltMsl };
 
     /// Kalman Filter representation
@@ -638,6 +662,11 @@ class LooselyCoupledKF : public Node
     /// @return The 1x15 measurement matrix 𝐇
     [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 1, 15> n_baroMeasurementMatrix_H();
 
+    /// @brief Measurement matrix for Baro measurements at timestep k, represented in navigation coordinates
+    /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
+    /// @return The 1x15 measurement matrix 𝐇
+    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 1, 15> e_baroMeasurementMatrix_H(const Eigen::Vector3d& lla_positionEstimate);
+
     /// @brief Measurement matrix for GNSS measurements at timestep k, represented in Earth frame coordinates
     /// @param[in] e_Dcm_b Direction Cosine Matrix from body to Earth coordinates
     /// @param[in] b_omega_ib Angular rate of body with respect to inertial system in body-frame coordinates in [rad/s]
@@ -659,7 +688,7 @@ class LooselyCoupledKF : public Node
     /// @brief Measurement noise covariance matrix 𝐑 for Baro Measurement
     /// @param[in] BaroVarianceAltitude Variances of the height in [m²]
     /// @return The 1x1 measurement covariance matrix 𝐑
-    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFMeas, 1, 1> n_baroMeasurementNoiseCovariance_R(const double BaroVarianceAltitude);
+    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFMeas, 1, 1> baroMeasurementNoiseCovariance_R(const double BaroVarianceAltitude);
 
     /// @brief Measurement noise covariance matrix 𝐑
     /// @param[in] gnssVariancePosition Variances of the position in [m²]
@@ -689,6 +718,13 @@ class LooselyCoupledKF : public Node
     /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
     /// @return The 1x1 measurement innovation vector 𝜹𝐳
     [[nodiscard]] static KeyedVector<double, KFMeas, 1> n_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate);
+
+    /// @brief Measurement innovation vector 𝜹𝐳
+    /// @param[in] baroHeightMeasurement Baro Altitude (Geoid height) Mesurment in [m]
+    /// @param[in] e_positionEstimate Position estimate in ECEF coordinates in [m]
+    /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
+    /// @return The 1x1 measurement innovation vector 𝜹𝐳
+    [[nodiscard]] static KeyedVector<double, KFMeas, 1> e_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate);
 
     /// @brief Measurement innovation vector 𝜹𝐳
     /// @param[in] e_positionMeasurement Position measurement in ECEF coordinates in [m]
