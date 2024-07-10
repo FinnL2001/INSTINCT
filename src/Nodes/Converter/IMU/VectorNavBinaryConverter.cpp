@@ -17,6 +17,10 @@ namespace nm = NAV::NodeManager;
 #include "internal/FlowManager.hpp"
 
 #include "internal/gui/widgets/EnumCombo.hpp"
+#include "internal/gui/widgets/imgui_ex.hpp"
+#include "internal/gui/widgets/HelpMarker.hpp"
+#include "internal/gui/NodeEditorApplication.hpp"
+#include "Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
 
 #include "Navigation/Transformations/CoordinateFrames.hpp"
 #include "Navigation/Transformations/Units.hpp"
@@ -96,6 +100,12 @@ void NAV::VectorNavBinaryConverter::guiConfig()
             LOG_DEBUG("{}: _useCompensatedData changed to {}", nameId(), _useCompensatedData);
             flow::ApplyChanges();
         }
+        if (ImGui::InputInt("Iteration of a baro measurment", &_baromeasurmentIteration))
+        {
+            flow::ApplyChanges();
+        }
+        ImGui::SameLine();
+        gui::widgets::HelpMarker("every Iteration of the imu measurment a baro measurment is made");
     }
     else if (_outputType == OutputType::PosVelAtt)
     {
@@ -122,6 +132,7 @@ void NAV::VectorNavBinaryConverter::guiConfig()
     j["posVelSource"] = _posVelSource;
     j["forceStatic"] = _forceStatic;
     j["useCompensatedData"] = _useCompensatedData;
+    j["baromeasurmentIteration"] = _baromeasurmentIteration;
 
     return j;
 }
@@ -170,6 +181,10 @@ void NAV::VectorNavBinaryConverter::restore(json const& j)
     {
         _useCompensatedData = j.at("useCompensatedData");
     }
+    if (j.contains("baromeasurmentIteration"))
+    {
+        _baromeasurmentIteration = j.at("baromeasurmentIteration");
+    }
 }
 
 bool NAV::VectorNavBinaryConverter::initialize()
@@ -177,6 +192,7 @@ bool NAV::VectorNavBinaryConverter::initialize()
     LOG_TRACE("{}: called", nameId());
 
     _posVelAtt__init = nullptr;
+    _iterationCounter = 0;
 
     return true;
 }
@@ -297,6 +313,21 @@ std::shared_ptr<const NAV::ImuObsWDelta> NAV::VectorNavBinaryConverter::convert2
             imuObs->dvel = vnObs->imuOutputs->deltaV.cast<double>();
             dVelFound = true;
         }
+        if (vnObs->imuOutputs->imuField & vn::protocol::uart::ImuGroup::IMUGROUP_PRES)
+        {
+            if ((_baromeasurmentIteration) == (_iterationCounter) || _iterationCounter == 0)
+            {
+                imuObs->airPressureUncomp = vnObs->imuOutputs->pres * 10;
+                imuObs->altitudeUncomp = calcHeightStAtm(vnObs->imuOutputs->pres * 10);
+                _iterationCounter = 1;
+            }
+            else
+            {
+                imuObs->airPressureUncomp = std::nullopt;
+                imuObs->altitudeUncomp = std::nullopt;
+                _iterationCounter = _iterationCounter + 1;
+            }
+        }
     }
 
     if (accelFound && gyroFound && dThetaFound && dVelFound)
@@ -382,6 +413,21 @@ std::shared_ptr<const NAV::ImuObs> NAV::VectorNavBinaryConverter::convert2ImuObs
         if (vnObs->imuOutputs->imuField & vn::protocol::uart::ImuGroup::IMUGROUP_TEMP)
         {
             imuObs->temperature = vnObs->imuOutputs->temp;
+        }
+        if (vnObs->imuOutputs->imuField & vn::protocol::uart::ImuGroup::IMUGROUP_PRES)
+        {
+            if ((_baromeasurmentIteration) == (_iterationCounter) || _iterationCounter == 0)
+            {
+                imuObs->airPressureUncomp = vnObs->imuOutputs->pres * 10;
+                imuObs->altitudeUncomp = calcHeightStAtm(vnObs->imuOutputs->pres * 10);
+                _iterationCounter = 1;
+            }
+            else
+            {
+                imuObs->airPressureUncomp = std::nullopt;
+                imuObs->altitudeUncomp = std::nullopt;
+                _iterationCounter = _iterationCounter + 1;
+            }
         }
     }
 

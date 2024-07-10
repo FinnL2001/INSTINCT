@@ -97,6 +97,11 @@ class VectorNavBinaryConverter : public Node
     /// Whether to extract the compensated data or the uncompensated
     bool _useCompensatedData = false;
 
+    ///  every Iteration of the imu measurment a baro measurment is made
+    int _baromeasurmentIteration = 1;
+    /// counts the iterations for baro measurment
+    int _iterationCounter = 0;
+
     /// Position, Velocity and Attitude at initialization (needed for static data)
     std::shared_ptr<const PosVelAtt> _posVelAtt__init = nullptr;
 

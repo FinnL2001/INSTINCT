@@ -29,7 +29,7 @@ namespace NAV
 
 /// @brief Calculates the standard atmosphere Height above MSL (mean sea level) [m]
 /// @param[in] pressure total pressure in [hPa] = [mbar]
-/// @return Geometric Height above MSL (mean sea level) [m]
+/// @return Geopotential Height above MSL (mean sea level) [m]
 [[nodiscard]] constexpr double calcHeightStAtm(double pressure)
 {
     return 44.300 * (1-gcem::pow(pressure / 1013.25, 0.19)) * 1000;

@@ -131,6 +131,7 @@ void NAV::ImuSimulator::guiConfig()
             LOG_DEBUG("{}: gnssFrequency changed to {}", nameId(), _gnssFrequency);
             flow::ApplyChanges();
         }
+        ImGui::SetNextItemWidth(columnWidth);
         if (ImGui::InputInt("Iteration of a baro measurment", &_baromeasurmentIteration))
         {
             flow::ApplyChanges();
