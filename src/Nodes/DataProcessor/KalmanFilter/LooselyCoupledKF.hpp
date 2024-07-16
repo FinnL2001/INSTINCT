@@ -173,11 +173,7 @@ class LooselyCoupledKF : public Node
     /// Add or remove the external PVA Init pin
     void updateExternalPvaInitPin();
 
-    /// @brief Used for baroCalibration inside the LCKF
-    /// @param Tstart Temprature at Takeoff [K]
-    /// @param Pstart Preassure at Takeoff [hPa]
-    /// @param Hstart Height at Takeoff [m]
-    // void calibarationBaro(double Tstart, double Pstart, double Hstart);
+
 
     /// Temprature at Takeoff [K]
     // double _Tstart=0;

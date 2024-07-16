@@ -38,7 +38,7 @@ namespace NAV
 /// @brief Calculates the standard atmosphere Height above MSL (mean sea level) [m] (Calibrated for Temp and Presure Principle Error)
 /// @param[in] pressure total pressure in [hPa] = [mbar]
 /// @param[in] temp_start at the start of the Measurment in [K]
-/// @param[in] pressure_start  pressure at the start of the Measurment in [hPa] = [mbar]
+/// @param[in] pres_start  pressure at the start of the Measurment in [hPa] = [mbar]
 /// @param[in] H_start Geopotential Height from the Start point  above MSL (mean sea level) [m]
 /// @return Geopotential Height above MSL (mean sea level) [m]
 [[nodiscard]] constexpr double calcCalibrateHeightStAtm(double pressure, double temp_start, double pres_start, double H_start)
