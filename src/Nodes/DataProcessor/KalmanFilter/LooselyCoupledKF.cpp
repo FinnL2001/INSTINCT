@@ -1705,9 +1705,9 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
         }
     }
 
-    // LOG_DEBUG("{}: H\n{}\n", nameId(), _kalmanFilter.H);
+    LOG_DEBUG("{}: H\n{}\n", nameId(), _kalmanFilter.H);
     // LOG_DEBUG("{}: R\n{}\n", nameId(), _kalmanFilter.R);
-    // LOG_DEBUG("{}: z =\n{}", nameId(), _kalmanFilter.z.transposed());
+    LOG_DEBUG("{}: z =\n{}", nameId(), _kalmanFilter.z.transposed());
 
     // LOG_DEBUG("{}: K\n{}\n", nameId(), _kalmanFilter.K);
     // LOG_DEBUG("{}: x =\n{}", nameId(), _kalmanFilter.x.transposed());
@@ -1739,6 +1739,10 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
     }
     else // if (_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::ECEF)
     {
+        lckfSolution->frame = InsGnssLCKFSolution::Frame::ECEF;
+        _inertialIntegrator.applyStateErrors_e(lckfSolution->positionError, lckfSolution->velocityError, lckfSolution->attitudeError);
+        const auto& state = _inertialIntegrator.getLatestState().value().get();
+        lckfSolution->setState_e(state.e_position(), state.e_velocity(), state.e_Quat_b());
     }
 
     _kalmanFilter.x(all).setZero();
@@ -2168,11 +2172,19 @@ NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
     NAV::LooselyCoupledKF::e_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate)
 {
     // TODO
-    double lat = lla_positionEstimate(0);
-    double lon = lla_positionEstimate(1);
+    //double lat = lla_positionEstimate(0);
+    //double lon = lla_positionEstimate(1);
+    //Eigen::Vector3d n_poslocalFrame(lat, lon, 0);
+    //Eigen::Vector3d e_poslocalFrame = trafo::lla2ecef_WGS84(n_poslocalFrame);
+    //LOG_DEBUG("e_poslocalFrame =\n{}", e_poslocalFrame);
+    //Eigen::Vector3d e_positionEstimate_b = e_positionEstimate - e_poslocalFrame;
     double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
-    double control = (std::sin(lat) * e_positionEstimate(2) + std::cos(lat) * std::cos(lon) * e_positionEstimate(0) + std::cos(lat) * std::sin(lon) * e_positionEstimate(1));
-    double deltaAlt = baroHeightMeasurement - control + geoidHeight;
+    //double z = std::sin(lat) * e_positionEstimate_b(2);
+    //double x = std::cos(lat) * std::cos(lon) * e_positionEstimate_b(0);
+    //double y = std::cos(lat) * std::sin(lon) * e_positionEstimate_b(1);
+    //double control = (z + x + y);
+    double heightest = trafo::ecef2lla_WGS84(e_positionEstimate)(2);
+    double deltaAlt = baroHeightMeasurement - heightest+ geoidHeight;
 
     Eigen::Matrix<double, 1, 1> innovation;
     innovation << deltaAlt;

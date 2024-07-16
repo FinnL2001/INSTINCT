@@ -389,6 +389,7 @@ class LooselyCoupledKF : public Node
 
     /// GUI selection of the Baro measurement uncertainty
     double _baroMeasurementUncertainty = 0.5;
+     
     // ###########################################################################################################
 
     /// Possible Units for the initial covariance for the position (standard deviation σ or Variance σ²)
@@ -721,7 +722,6 @@ class LooselyCoupledKF : public Node
 
     /// @brief Measurement innovation vector 𝜹𝐳
     /// @param[in] baroHeightMeasurement Baro Altitude (Geoid height) Mesurment in [m]
-    /// @param[in] e_positionEstimate Position estimate in ECEF coordinates in [m]
     /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
     /// @return The 1x1 measurement innovation vector 𝜹𝐳
     [[nodiscard]] static KeyedVector<double, KFMeas, 1> e_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate);
