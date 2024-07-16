@@ -141,14 +141,35 @@ void NAV::LooselyCoupledKF::guiConfig()
     float unitWidth = 150.0F * gui::NodeEditorApplication::windowFontRatio();
 
     float taylorOrderWidth = 75.0F * gui::NodeEditorApplication::windowFontRatio();
-    if (ImGui::CollapsingHeader(fmt::format("Use the Barometer as a second Measurement?##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+    if (ImGui::CollapsingHeader(fmt::format("Use the Barometer as a second Measurement##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
     {
         if (ImGui::Checkbox(fmt::format("Second Measurement?##{}", size_t(id)).c_str(), &_useBarometer))
         {
             updateExternalPvaInitPin();
             flow::ApplyChanges();
         }
+        if (ImGui::Checkbox(fmt::format("BaroCalibration?##{}", size_t(id)).c_str(), &_useCaliBaro))
+        {
+            updateExternalPvaInitPin();
+            flow::ApplyChanges();
+        }
+        ImGui::SameLine();
+        gui::widgets::HelpMarker("Uses GPS-Height and the start temperature ");
+        if (ImGui::Checkbox(fmt::format("Principel Error (Pres and temp) Estimation?##{}", size_t(id)).c_str(), &_usePrincipelErrorEstimation))
+        {
+            updateExternalPvaInitPin();
+            flow::ApplyChanges();
+        }
+        ImGui::SameLine();
+        gui::widgets::HelpMarker("Estimation of the Pricipel Error as Bias in the Kalman Start Values are Calculated automaticly from GPS height and Start Temperature");
+
+         if (ImGui::InputDouble("Temperature at the Start [K]", &_Tstart))
+        {
+            updateExternalPvaInitPin();
+            flow::ApplyChanges();
+        }
     }
+
     if (ImGui::CollapsingHeader(fmt::format("Initialization##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
     {
         if (ImGui::Checkbox(fmt::format("Initialize over pin##{}", size_t(id)).c_str(), &_initializeStateOverExternalPin))
@@ -2172,19 +2193,19 @@ NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
     NAV::LooselyCoupledKF::e_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate)
 {
     // TODO
-    //double lat = lla_positionEstimate(0);
-    //double lon = lla_positionEstimate(1);
-    //Eigen::Vector3d n_poslocalFrame(lat, lon, 0);
-    //Eigen::Vector3d e_poslocalFrame = trafo::lla2ecef_WGS84(n_poslocalFrame);
-    //LOG_DEBUG("e_poslocalFrame =\n{}", e_poslocalFrame);
-    //Eigen::Vector3d e_positionEstimate_b = e_positionEstimate - e_poslocalFrame;
+    // double lat = lla_positionEstimate(0);
+    // double lon = lla_positionEstimate(1);
+    // Eigen::Vector3d n_poslocalFrame(lat, lon, 0);
+    // Eigen::Vector3d e_poslocalFrame = trafo::lla2ecef_WGS84(n_poslocalFrame);
+    // LOG_DEBUG("e_poslocalFrame =\n{}", e_poslocalFrame);
+    // Eigen::Vector3d e_positionEstimate_b = e_positionEstimate - e_poslocalFrame;
     double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
-    //double z = std::sin(lat) * e_positionEstimate_b(2);
-    //double x = std::cos(lat) * std::cos(lon) * e_positionEstimate_b(0);
-    //double y = std::cos(lat) * std::sin(lon) * e_positionEstimate_b(1);
-    //double control = (z + x + y);
+    // double z = std::sin(lat) * e_positionEstimate_b(2);
+    // double x = std::cos(lat) * std::cos(lon) * e_positionEstimate_b(0);
+    // double y = std::cos(lat) * std::sin(lon) * e_positionEstimate_b(1);
+    // double control = (z + x + y);
     double heightest = trafo::ecef2lla_WGS84(e_positionEstimate)(2);
-    double deltaAlt = baroHeightMeasurement - heightest+ geoidHeight;
+    double deltaAlt = baroHeightMeasurement - heightest + geoidHeight;
 
     Eigen::Matrix<double, 1, 1> innovation;
     innovation << deltaAlt;

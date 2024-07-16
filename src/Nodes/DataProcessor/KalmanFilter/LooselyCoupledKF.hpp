@@ -176,22 +176,14 @@ class LooselyCoupledKF : public Node
 
 
     /// Temprature at Takeoff [K]
-    // double _Tstart=0;
+     double _Tstart=0;
 
-    ///  Preassure at Takeoff [hPa]
-    // double _Pstart=0;
-
-    ///  Height at Takeoff [m]
-    // double _Hstart=0;
-
+    /// Estimate PricipleError
+    bool _usePrincipelErrorEstimation = false;
     /// Use calibarationBaro
-    // bool _useCaliBaro = false;
+    bool _useCaliBaro = false;
 
-    /// Use Pstart otherwise the first baro Measurment will be used
-    // bool _usePstart = false;
-
-    /// Use Pstart otherwise the first GPS Height Measurment will be used
-    // bool _useHstart = false;
+   
 
     /// @brief Inertial Integrator
     InertialIntegrator _inertialIntegrator;
