@@ -25,4 +25,14 @@ namespace NAV
     return 15.0 - 6.5e-3 * altitudeMSL + 273.15;
 }
 
+/// @brief Calculates the Sea Level Temp from a Tempratur and its Height
+/// @param[in] temp_meas temperature in [K]
+/// @param[in] altitudeMSL Geodetic height from the Measurment point above MSL (mean sea level)
+/// @return The Sea Level temperature in [K]
+/// @note See \cite RTKLIB RTKLIB ch. E.5, eq. E.5.2, p. 149
+[[nodiscard]] constexpr double calcMeanSeaLevelTemp(double altitudeMSL, double temp_meas)
+{
+    return temp_meas + 0.0065 * altitudeMSL;
+}
+
 } // namespace NAV
