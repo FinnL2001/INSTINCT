@@ -33,6 +33,7 @@ namespace nm = NAV::NodeManager;
 #include "Navigation/Transformations/Units.hpp"
 #include "util/Logger.hpp"
 #include "util/Assert.h"
+#include "Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
 #include "Navigation/Geoid/EGM96.hpp"
 
 #include "NodeData/IMU/ImuObsWDelta.hpp"
@@ -163,7 +164,7 @@ void NAV::LooselyCoupledKF::guiConfig()
         ImGui::SameLine();
         gui::widgets::HelpMarker("Estimation of the Pricipel Error as Bias in the Kalman Start Values are Calculated automaticly from GPS height and Start Temperature");
 
-         if (ImGui::InputDouble("Temperature at the Start [K]", &_Tstart))
+        if (ImGui::InputDouble("Temperature at the Start [K]", &_Tstart))
         {
             updateExternalPvaInitPin();
             flow::ApplyChanges();
@@ -597,6 +598,9 @@ void NAV::LooselyCoupledKF::guiConfig()
     j["initalRollPitchYaw"] = _initalRollPitchYaw;
     j["initializeStateOverExternalPin"] = _initializeStateOverExternalPin;
     j["useBarometer"] = _useBarometer;
+    j["usePrincipelErrorEstimation"] = _usePrincipelErrorEstimation;
+    j["useCaliBaro"] = _useCaliBaro;
+    j["Tstart="] = _Tstart;
 
     j["showKalmanFilterOutputPins"] = _showKalmanFilterOutputPins;
     j["checkKalmanMatricesRanks"] = _checkKalmanMatricesRanks;
@@ -837,7 +841,7 @@ bool NAV::LooselyCoupledKF::initialize()
     _inertialIntegrator.reset();
     _lastImuObs = nullptr;
     _externalInitTime.reset();
-
+    _getPstart = true;
     _kalmanFilter.setZero();
 
     // Initial Covariance of the attitude angles in [rad²]
@@ -995,7 +999,17 @@ void NAV::LooselyCoupledKF::recvImuObservation(InputPin::NodeDataQueue& queue, s
 
     std::shared_ptr<NAV::PosVelAtt> inertialNavSol = nullptr;
 
-    _lastImuObs = std::static_pointer_cast<const ImuObs>(nodeData);
+    _lastImuObs = std::const_pointer_cast<ImuObs>(std::static_pointer_cast<const ImuObs>(nodeData));
+    if (_useCaliBaro && _getPstart)
+    {
+        _Pstart = _lastImuObs->getValueAt(11).value();
+        _getPstart = false;
+    }
+    if (_useCaliBaro && _lastImuObs->airPressureUncomp.has_value())
+    {
+        double calculatedAltitude = calcCalibrateHeightStAtm(_lastImuObs->airPressureUncomp.value(), _Tstart, _Pstart, _Heightstart_Msl);
+        _lastImuObs->altitudeUncomp = std::make_optional(calculatedAltitude);
+    }
 
     if (!_preferAccelerationOverDeltaMeasurements
         && NAV::NodeRegistry::NodeDataTypeAnyIsChildOf(inputPins.at(INPUT_PORT_INDEX_IMU).link.getConnectedPin()->dataIdentifier, { ImuObsWDelta::type() }))
@@ -1044,6 +1058,8 @@ void NAV::LooselyCoupledKF::recvPosVelObservation(InputPin::NodeDataQueue& queue
                              trafo::n_Quat_b(deg2rad(_initalRollPitchYaw[0]), deg2rad(_initalRollPitchYaw[1]), deg2rad(_initalRollPitchYaw[2])));
 
         _inertialIntegrator.setInitialState(posVelAtt);
+        Eigen::Vector3d pos = posVelAtt.lla_position();
+        _Heightstart_Msl = posVelAtt.altitude() - egm96_compute_altitude_offset(pos(0), pos(1));
         LOG_DATA("{}:   e_position   = {}", nameId(), posVelAtt.e_position().transpose());
         LOG_DATA("{}:   e_velocity   = {}", nameId(), posVelAtt.e_velocity().transpose());
         LOG_DATA("{}:   rollPitchYaw = {}", nameId(), rad2deg(posVelAtt.rollPitchYaw()).transpose());
@@ -1079,6 +1095,8 @@ void NAV::LooselyCoupledKF::recvPosVelAttInit(InputPin::NodeDataQueue& queue, si
     _externalInitTime = posVelAtt->insTime;
 
     _inertialIntegrator.setInitialState(*posVelAtt);
+    Eigen::Vector3d pos = posVelAtt->lla_position();
+    _Heightstart_Msl = posVelAtt->altitude() - egm96_compute_altitude_offset(pos(0), pos(1));
     LOG_DATA("{}:   e_position   = {}", nameId(), posVelAtt->e_position().transpose());
     LOG_DATA("{}:   e_velocity   = {}", nameId(), posVelAtt->e_velocity().transpose());
     LOG_DATA("{}:   rollPitchYaw = {}", nameId(), rad2deg(posVelAtt->rollPitchYaw()).transpose());

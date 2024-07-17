@@ -173,17 +173,20 @@ class LooselyCoupledKF : public Node
     /// Add or remove the external PVA Init pin
     void updateExternalPvaInitPin();
 
-
-
     /// Temprature at Takeoff [K]
-     double _Tstart=0;
+    double _Tstart = 288.15;
+    /// Pressure at Takeoff [hPa]
+    double _Pstart = 1013.25;
+    /// True if you need too set P_start
+    bool _getPstart = true;
+
+    /// Pressure at Takeoff [hPa]
+    double _Heightstart_Msl = 0;
 
     /// Estimate PricipleError
     bool _usePrincipelErrorEstimation = false;
     /// Use calibarationBaro
     bool _useCaliBaro = false;
-
-   
 
     /// @brief Inertial Integrator
     InertialIntegrator _inertialIntegrator;
@@ -191,7 +194,7 @@ class LooselyCoupledKF : public Node
     bool _preferAccelerationOverDeltaMeasurements = false;
 
     /// Last received IMU observation (to get ImuPos)
-    std::shared_ptr<const ImuObs> _lastImuObs = nullptr;
+    std::shared_ptr<ImuObs> _lastImuObs = nullptr;
 
     /// Roll, Pitch and Yaw angles in [deg] used for initialization if not taken from separate pin
     std::array<double, 3> _initalRollPitchYaw{};
@@ -377,7 +380,7 @@ class LooselyCoupledKF : public Node
 
     /// GUI selection of the Baro measurement uncertainty
     double _baroMeasurementUncertainty = 0.5;
-     
+
     // ###########################################################################################################
 
     /// Possible Units for the initial covariance for the position (standard deviation σ or Variance σ²)
