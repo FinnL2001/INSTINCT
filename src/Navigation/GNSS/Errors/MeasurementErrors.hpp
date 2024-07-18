@@ -84,9 +84,9 @@ class GnssMeasurementErrorModel
     Model _model = RTKLIB;
 
     /// Carrier Measurement error standard deviation per Frequency [m]
-    double _carrierStdDev = 0.001;
+    double _carrierStdDev = 0.003;
     /// Code/Pseudorange Measurement error standard deviation per Frequency [m]
-    double _codeStdDev = 0.1;
+    double _codeStdDev = 0.9;
     /// Doppler Frequency error factor [Hz] - Measurement error standard deviation
     double _dopplerStdDev = 1;
 
@@ -125,8 +125,8 @@ class GnssMeasurementErrorModel
     /// Model parameters for the 'RTKLIB' model
     struct ModelParametersRtklib
     {
-        double a = 0.7; ///< Coefficient
-        double b = 0.7; ///< Coefficient
+        double a = 1.0; ///< Coefficient
+        double b = 1.0; ///< Coefficient
     };
     /// Model parameters for the 'RTKLIB' model
     ModelParametersRtklib _modelParametersRtklib;
@@ -178,7 +178,7 @@ class GnssMeasurementErrorModel
     /// @brief Elevation data for plotting [rad]
     static constexpr std::array<double, PLOT_SAMPLES> _elevation_deg = genRangeArray<PLOT_SAMPLES>(0.0, 0.01, 90.001);
     /// @brief Standard deviations for plotting
-    std::vector<std::vector<double>> _stdDevCurvePlot{ Model::COUNT - 1, std::vector<double>(PLOT_SAMPLES) };
+    std::vector<std::vector<double>> _stdDevCurvePlot{ Model::COUNT, std::vector<double>(PLOT_SAMPLES) };
 
     /// @brief Calculates the weighting function for the standard deviation
     /// @param[in] model Model to use

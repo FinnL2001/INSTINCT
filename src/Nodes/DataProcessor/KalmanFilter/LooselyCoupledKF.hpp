@@ -117,14 +117,6 @@ class LooselyCoupledKF : public Node
     constexpr static size_t INPUT_PORT_INDEX_GNSS = 1;             ///< @brief Flow (PosVel)
     constexpr static size_t INPUT_PORT_INDEX_POS_VEL_ATT_INIT = 2; ///< @brief Flow (PosVelAtt)
     constexpr static size_t OUTPUT_PORT_INDEX_SOLUTION = 0;        ///< @brief Flow (InsGnssLCKFSolution)
-    constexpr static size_t OUTPUT_PORT_INDEX_x = 1;               ///< @brief x̂ State vector
-    constexpr static size_t OUTPUT_PORT_INDEX_P = 2;               ///< @brief 𝐏 Error covariance matrix
-    constexpr static size_t OUTPUT_PORT_INDEX_Phi = 3;             ///< @brief 𝚽 State transition matrix
-    constexpr static size_t OUTPUT_PORT_INDEX_Q = 4;               ///< @brief 𝐐 System/Process noise covariance matrix
-    constexpr static size_t OUTPUT_PORT_INDEX_z = 5;               ///< @brief 𝐳 Measurement vector
-    constexpr static size_t OUTPUT_PORT_INDEX_H = 6;               ///< @brief 𝐇 Measurement sensitivity Matrix
-    constexpr static size_t OUTPUT_PORT_INDEX_R = 7;               ///< @brief 𝐑 = 𝐸{𝐰ₘ𝐰ₘᵀ} Measurement noise covariance matrix
-    constexpr static size_t OUTPUT_PORT_INDEX_K = 8;               ///< @brief 𝐊 Kalman gain matrix
 
     /// @brief Initialize the node
     bool initialize() override;
@@ -237,9 +229,6 @@ class LooselyCoupledKF : public Node
     // #########################################################################################################################################
     //                                                              GUI settings
     // #########################################################################################################################################
-
-    /// @brief Show output pins for the Kalman matrices
-    bool _showKalmanFilterOutputPins = false;
 
     /// @brief Check the rank of the Kalman matrices every iteration (computational expensive)
     bool _checkKalmanMatricesRanks = true;
@@ -354,6 +343,9 @@ class LooselyCoupledKF : public Node
     /// SPP accuracy approx. 3m in horizontal direction and 3 times worse in vertical direction
     Eigen::Vector3d _gnssMeasurementUncertaintyPosition{ 0.3, 0.3, 0.3 * 3 };
 
+    /// Whether to override the position uncertainty or use the one included in the measurement
+    bool _gnssMeasurementUncertaintyPositionOverride = false;
+
     // ###########################################################################################################
 
     /// Possible Units for the GNSS measurement uncertainty for the velocity (standard deviation σ or Variance σ²)
@@ -367,6 +359,9 @@ class LooselyCoupledKF : public Node
 
     /// GUI selection of the GNSS NED velocity measurement uncertainty (standard deviation σ or Variance σ²)
     Eigen::Vector3d _gnssMeasurementUncertaintyVelocity{ 0.5, 0.5, 0.5 };
+
+    /// Whether to override the velocity uncertainty or use the one included in the measurement
+    bool _gnssMeasurementUncertaintyVelocityOverride = false;
     /// ##########################################################################################################
 
     /// Possible Units for Baro measurement unertainty for the height (standard deviation σ or Variance σ²)

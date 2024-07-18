@@ -1,23 +1,31 @@
-/*
- * Copyright (c) 2006 D.Ineiev <ineiev@yahoo.co.uk>
- * Copyright (c) 2020 Emeric Grange <emeric.grange@gmail.com>
- *
- * This software is provided 'as-is', without any express or implied warranty.
- * In no event will the authors be held liable for any damages arising from
- * the use of this software.
- *
- * Permission is granted to anyone to use this software for any purpose,
- * including commercial applications, and to alter it and redistribute it
- * freely, subject to the following restrictions:
- *
- * 1. The origin of this software must not be misrepresented; you must not
- *    claim that you wrote the original software. If you use this software
- *    in a product, an acknowledgment in the product documentation would be
- *    appreciated but is not required.
- * 2. Altered source versions must be plainly marked as such, and must not be
- *    misrepresented as being the original software.
- * 3. This notice may not be removed or altered from any source distribution.
- */
+// This file is part of INSTINCT, the INS Toolkit for Integrated
+// Navigation Concepts and Training by the Institute of Navigation of
+// the University of Stuttgart, Germany.
+
+/// @file EGM96.hpp
+/// @brief EGM96 geoid model
+/// @author T. Topp (topp@ins.uni-stuttgart.de)
+/// @date 2024-07-05
+///
+/// Source code: https://github.com/emericg/EGM96/blob/master/EGM96.c
+/// Copyright (c) 2006 D.Ineiev <ineiev@yahoo.co.uk>
+/// Copyright (c) 2020 Emeric Grange <emeric.grange@gmail.com>
+///
+/// This software is provided 'as-is', without any express or implied warranty.
+/// In no event will the authors be held liable for any damages arising from
+/// the use of this software.
+///
+/// Permission is granted to anyone to use this software for any purpose,
+/// including commercial applications, and to alter it and redistribute it
+/// freely, subject to the following restrictions:
+///
+/// 1. The origin of this software must not be misrepresented; you must not
+///    claim that you wrote the original software. If you use this software
+///    in a product, an acknowledgment in the product documentation would be
+///    appreciated but is not required.
+/// 2. Altered source versions must be plainly marked as such, and must not be
+///    misrepresented as being the original software.
+/// 3. This notice may not be removed or altered from any source distribution.
 
 /*
  * This program is designed for the calculation of a geoid undulation at a point
@@ -41,29 +49,15 @@
  * of Geodetic Science and Surveying, the Ohio State University, Columbus, 1982
  */
 /*
- * https://github.com/emericg/EGM96/blob/master/EGM96.c
  * Changes:
- *autoformatting
- *Namespace NAV was added
- *
- *instead of
- *#ifndef EGM96_DATA_H
- *#define EGM96_DATA_H
- *#endif // EGM96_DATA_H
- *I Used:
- *#pragma once
- *instead of
- *#include <math.h>
- *I Used:
- *#include <cmath>
- *#include <array>
- *
+ *   - Auto-formatting
+ *   - Namespace NAV added
+ *   - Added "NOLINT" instructions to disable clang-tidy
  */
 
 #include "EGM96.hpp"
-#include "Navigation/Geoid/Models/EGM96_Data.hpp"
+#include "internal/EGM96_Data.hpp"
 #include <cmath>
-#include <array>
 
 /* ************************************************************************** */
 namespace NAV
@@ -74,8 +68,8 @@ namespace NAV
 
 /* ************************************************************************** */
 
-double hundu(double p[_coeffs + 1],
-             double sinml[_361 + 1], double cosml[_361 + 1],
+double hundu(double p[_coeffs + 1],                          // NOLINT
+             double sinml[_361 + 1], double cosml[_361 + 1], // NOLINT
              double gr, double re)
 {
     // WGS 84 gravitational constant in m³/s² (mass of Earth’s atmosphere included)
@@ -93,21 +87,21 @@ double hundu(double p[_coeffs + 1],
     {
         arn *= ar;
         k++;
-        double sum = p[k] * Models::egm96_data[k][2];
-        double sumc = p[k] * Models::egm96_data[k][0];
+        double sum = p[k] * Geoid::EGM96::internal::egm96_data[k][2];  // NOLINT
+        double sumc = p[k] * Geoid::EGM96::internal::egm96_data[k][0]; // NOLINT
 
         for (unsigned m = 1; m <= n; m++)
         {
             k++;
-            double tempc = Models::egm96_data[k][0] * cosml[m] + Models::egm96_data[k][1] * sinml[m];
-            double temp = Models::egm96_data[k][2] * cosml[m] + Models::egm96_data[k][3] * sinml[m];
+            double tempc = Geoid::EGM96::internal::egm96_data[k][0] * cosml[m] + Geoid::EGM96::internal::egm96_data[k][1] * sinml[m]; // NOLINT
+            double temp = Geoid::EGM96::internal::egm96_data[k][2] * cosml[m] + Geoid::EGM96::internal::egm96_data[k][3] * sinml[m];  // NOLINT
             sumc += p[k] * tempc;
             sum += p[k] * temp;
         }
         ac += sumc;
         a += sum * arn;
     }
-    ac += Models::egm96_data[1][0] + (p[2] * Models::egm96_data[2][0]) + (p[3] * (Models::egm96_data[3][0] * cosml[1] + Models::egm96_data[3][1] * sinml[1]));
+    ac += Geoid::EGM96::internal::egm96_data[1][0] + (p[2] * Geoid::EGM96::internal::egm96_data[2][0]) + (p[3] * (Geoid::EGM96::internal::egm96_data[3][0] * cosml[1] + Geoid::EGM96::internal::egm96_data[3][1] * sinml[1]));
 
     // Add haco = ac/100 to convert height anomaly on the ellipsoid to the undulation
     // Add -0.53m to make undulation refer to the WGS84 ellipsoid
@@ -115,7 +109,7 @@ double hundu(double p[_coeffs + 1],
     return ((a * GM) / (gr * re)) + (ac / 100.0) - 0.53;
 }
 
-void dscml(double rlon, double sinml[_361 + 1], double cosml[_361 + 1])
+void dscml(double rlon, double sinml[_361 + 1], double cosml[_361 + 1]) // NOLINT
 {
     double a = sin(rlon);
     double b = cos(rlon);
@@ -144,25 +138,25 @@ void dscml(double rlon, double sinml[_361 + 1], double cosml[_361 + 1])
  * Original programmer: Oscar L. Colombo, Dept. of Geodetic Science the Ohio State University, August 1980.
  * ineiev: I removed the derivatives, for they are never computed here.
  */
-void legfdn(unsigned m, double theta, double rleg[_361 + 1])
+void legfdn(unsigned m, double theta, double rleg[_361 + 1]) // NOLINT
 {
-    static double drts[1301], dirt[1301], cothet, sithet, rlnn[_361 + 1];
-    static int ir; // TODO 'ir' must be set to zero before the first call to this sub.
+    static double drts[1301], dirt[1301], cothet, sithet, rlnn[_361 + 1]; // NOLINT
+    static int ir;                                                        // TODO 'ir' must be set to zero before the first call to this sub.
 
     unsigned nmax1 = _nmax + 1;
     unsigned nmax2p = (2 * _nmax) + 1;
     unsigned m1 = m + 1;
     unsigned m2 = m + 2;
     unsigned m3 = m + 3;
-    unsigned n, n1, n2;
+    unsigned n, n1, n2; // NOLINT
 
     if (!ir)
     {
         ir = 1;
         for (n = 1; n <= nmax2p; n++)
         {
-            drts[n] = sqrt(n);
-            dirt[n] = 1 / drts[n];
+            drts[n] = sqrt(n);     // NOLINT
+            dirt[n] = 1 / drts[n]; // NOLINT
         }
     }
 
@@ -176,10 +170,10 @@ void legfdn(unsigned m, double theta, double rleg[_361 + 1])
     {
         n = n1 - 1;
         n2 = 2 * n;
-        rlnn[n1] = drts[n2 + 1] * dirt[n2] * sithet * rlnn[n];
+        rlnn[n1] = drts[n2 + 1] * dirt[n2] * sithet * rlnn[n]; // NOLINT
     }
 
-    switch (m)
+    switch (m) // NOLINT
     {
     case 1:
         rleg[2] = rlnn[2];
@@ -190,19 +184,19 @@ void legfdn(unsigned m, double theta, double rleg[_361 + 1])
         rleg[2] = cothet * drts[3];
         break;
     }
-    rleg[m1] = rlnn[m1];
+    rleg[m1] = rlnn[m1]; // NOLINT
 
     if (m2 <= nmax1)
     {
-        rleg[m2] = drts[m1 * 2 + 1] * cothet * rleg[m1];
+        rleg[m2] = drts[m1 * 2 + 1] * cothet * rleg[m1]; // NOLINT
         if (m3 <= nmax1)
         {
             for (n1 = m3; n1 <= nmax1; n1++)
             {
                 n = n1 - 1;
-                if ((!m && n < 2) || (m == 1 && n < 3)) continue;
+                if ((!m && n < 2) || (m == 1 && n < 3)) continue; // NOLINT
                 n2 = 2 * n;
-                rleg[n1] = drts[n2 + 1] * dirt[n + m] * dirt[n - m] * (drts[n2 - 1] * cothet * rleg[n1 - 1] - drts[n + m - 1] * drts[n - m - 1] * dirt[n2 - 3] * rleg[n1 - 2]);
+                rleg[n1] = drts[n2 + 1] * dirt[n + m] * dirt[n - m] * (drts[n2 - 1] * cothet * rleg[n1 - 1] - drts[n + m - 1] * drts[n - m - 1] * dirt[n2 - 3] * rleg[n1 - 2]); // NOLINT
             }
         }
     }
@@ -245,9 +239,9 @@ void radgra(double lat, double lon, double* rlat, double* gr, double* re)
  */
 double undulation(double lat, double lon)
 {
-    double p[_coeffs + 1], sinml[_361 + 1], cosml[_361 + 1], rleg[_361 + 1];
+    double p[_coeffs + 1], sinml[_361 + 1], cosml[_361 + 1], rleg[_361 + 1]; // NOLINT
 
-    double rlat, gr, re;
+    double rlat, gr, re; // NOLINT
     unsigned nmax1 = _nmax + 1;
 
     // compute the geocentric latitude, geocentric radius, normal gravity
@@ -260,7 +254,7 @@ double undulation(double lat, double lon)
         legfdn(m, rlat, rleg);
         for (unsigned i = j; i <= nmax1; i++)
         {
-            p[(((i - 1) * i) / 2) + m + 1] = rleg[i];
+            p[(((i - 1) * i) / 2) + m + 1] = rleg[i]; // NOLINT
         }
     }
     dscml(lon, sinml, cosml);
@@ -272,8 +266,7 @@ double undulation(double lat, double lon)
 
 double egm96_compute_altitude_offset(double lat, double lon)
 {
-    const double rad = (180.0 / M_PI);
-    return undulation(lat / rad, lon / rad);
+    return undulation(lat, lon);
 }
 
 /* ************************************************************************** */

@@ -9,6 +9,8 @@
 #include "ErrorModel.hpp"
 
 #include "NodeRegistry.hpp"
+#include <algorithm>
+#include <imgui.h>
 #include "internal/NodeManager.hpp"
 namespace nm = NAV::NodeManager;
 #include "internal/FlowManager.hpp"
@@ -62,6 +64,11 @@ NAV::ErrorModel::ErrorModel()
 
     _imuAccelerometerRng.seed = dist(gen);
     _imuGyroscopeRng.seed = dist(gen);
+
+    _imuAccelerometerRWRng.seed = dist(gen);
+    _imuGyroscopeRWRng.seed = dist(gen);
+    _imuAccelerometerIRWRng.seed = dist(gen);
+    _imuGyroscopeIRWRng.seed = dist(gen);
     _imuBarometerRng.seed = dist(gen);
 
     _positionRng.seed = dist(gen);
@@ -246,6 +253,19 @@ void NAV::ErrorModel::guiConfig()
         }
         ImGui::Unindent();
     }
+    if (_inputType == InputType::ImuObs || _inputType == InputType::ImuObsWDelta)
+    {
+        ImGui::TextUnformatted("Random walk noise:");
+        ImGui::Indent();
+        noiseGuiInput("Accelerometer RW (Std. dev)", _imuAccelerometerRW, _imuAccelerometerRWUnit, "m/s^2/√(s)\0m/s^2/√(h)\0\0", "%.2g", _imuAccelerometerRWRng);
+        noiseGuiInput("Gyroscope RW (Std. dev)", _imuGyroscopeRW, _imuGyroscopeRWUnit, "rad/s/√(s)\0rad/s/√(h))\0deg/s/√(s)\0deg/s/√(h)\0\0", "%.2g", _imuGyroscopeRWRng);
+        ImGui::Unindent();
+        ImGui::TextUnformatted("Integrated Random walk noise:");
+        ImGui::Indent();
+        noiseGuiInput("Accelerometer IRW (Std. dev)", _imuAccelerometerIRW, _imuAccelerometerIRWUnit, "m/s^3/√(s)\0m/s^3/√(h)\0\0", "%.2g", _imuAccelerometerIRWRng);
+        noiseGuiInput("Gyroscope IRW (Std. dev)", _imuGyroscopeIRW, _imuGyroscopeIRWUnit, "rad/s^2/√(s)\0rad/s^2/√(h)\0deg/s^2/√(s)\0deg/s^2/√(h)\0\0", "%.2g", _imuGyroscopeIRWRng);
+        ImGui::Unindent();
+    }
 
     if (_inputType == InputType::GnssObs)
     {
@@ -288,10 +308,15 @@ void NAV::ErrorModel::guiConfig()
             ImGui::SameLine();
             gui::widgets::HelpMarker("The chance that the Lock-of-Loss (LLI) indicator is set, when a cycle-slip occurs");
 
-            if (ImGui::Checkbox(fmt::format("Single cycle steps when slip occurs##{}", size_t(id)).c_str(), &_gui_cycleSlipSingleCycle))
+            ImGui::SetNextItemWidth(itemWidth);
+            if (ImGui::DragInt(fmt::format("Ambiguity Range to slip to##{}", size_t(id)).c_str(), &_gui_cycleSlipRange,
+                               1.0F, 1, std::numeric_limits<int>::max(), "+/- %d"))
             {
+                LOG_DEBUG("{}: Cycle-slip ambiguity range changed to {}", nameId(), _gui_cycleSlipRange);
                 flow::ApplyChanges();
             }
+            ImGui::SameLine();
+            gui::widgets::HelpMarker("If the ambiguity range is set, the cycle-slips are bound by it too");
 
             ImGui::SetNextItemWidth(itemWidth);
             if (ShowFrequencySelector(fmt::format("Satellite Frequencies##{}", size_t(id)).c_str(), _filterFreq))
@@ -328,9 +353,8 @@ void NAV::ErrorModel::guiConfig()
                 {
                     ImGui::PushFont(Application::MonoFont());
 
-                    ImVec2 outer_size = ImVec2(0.0F, ImGui::GetTextLineHeightWithSpacing() * 2 + ImGui::GetTextLineHeightWithSpacing() * static_cast<float>(10));
                     if (ImGui::BeginTable(fmt::format("Ambiguities##{}", size_t(id)).c_str(), static_cast<int>(ambiguityTimes.size() + 1),
-                                          ImGuiTableFlags_Borders | ImGuiTableFlags_NoHostExtendX | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY, outer_size))
+                                          ImGuiTableFlags_Borders | ImGuiTableFlags_NoHostExtendX | ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_ScrollX | ImGuiTableFlags_ScrollY))
                     {
                         ImGui::TableSetupColumn("");
                         for (const auto& time : ambiguityTimes)
@@ -418,6 +442,20 @@ json NAV::ErrorModel::save() const
     j["imuBaroDriftUnit"] = _imuBaroDriftUnit;
     j["imuBaroPressureBias"] = _imuBaroPressureBias;
     j["imuBaroPressureBiasUnit"] = _imuBaroPressureBiasUnit;
+    j["imuAccelerometerRWUnit"] = _imuAccelerometerRWUnit;
+    j["imuAccelerometerRW"] = _imuAccelerometerRW;
+    j["imuAccelerometerRWRng"] = _imuAccelerometerRWRng;
+
+    j["imuGyroscopeRWUnit"] = _imuGyroscopeRWUnit;
+    j["imuGyroscopeRW"] = _imuGyroscopeRW;
+    j["imuGyroscopeRWRng"] = _imuGyroscopeRWRng;
+    j["imuAccelerometerIRWUnit"] = _imuAccelerometerIRWUnit;
+    j["imuAccelerometerIRW"] = _imuAccelerometerIRW;
+    j["imuAccelerometerIRWRng"] = _imuAccelerometerIRWRng;
+    j["imuGyroscopeIRWUnit"] = _imuGyroscopeIRWUnit;
+    j["imuGyroscopeIRW"] = _imuGyroscopeIRW;
+    j["imuGyroscopeIRWRng"] = _imuGyroscopeIRWRng;
+
     // #########################################################################################################################################
     j["positionBiasUnit"] = _positionBiasUnit;
     j["positionBias"] = _positionBias;
@@ -448,7 +486,7 @@ json NAV::ErrorModel::save() const
     j["ambiguityRng"] = _ambiguityRng;
     j["cycleSlipFrequencyUnit"] = _gui_cycleSlipFrequencyUnit;
     j["cycleSlipFrequency"] = _gui_cycleSlipFrequency;
-    j["cycleSlipSingleCycle"] = _gui_cycleSlipSingleCycle;
+    j["cycleSlipRange"] = _gui_cycleSlipRange;
     j["cycleSlipDetectionProbabilityUnit"] = _gui_cycleSlipDetectionProbabilityUnit;
     j["cycleSlipDetectionProbability"] = _gui_cycleSlipDetectionProbability;
     j["cycleSlipRng"] = _cycleSlipRng;
@@ -482,6 +520,19 @@ void NAV::ErrorModel::restore(json const& j)
     if (j.contains("imuBaroPressureBiasUnit")) { j.at("imuBaroPressureBiasUnit").get_to(_imuBaroPressureBiasUnit); }
     if (j.contains("imuBaroDriftUnit")) { j.at("imuBaroDriftUnit").get_to(_imuBaroDriftUnit); }
     if (j.contains("imuBaroDriftVar")) { j.at("imuBaroDriftVar").get_to(_imuBaroDriftVar); }
+
+    if (j.contains("imuAccelerometerRWUnit")) { j.at("imuAccelerometerRWUnit").get_to(_imuAccelerometerRWUnit); }
+    if (j.contains("imuAccelerometerRW")) { j.at("imuAccelerometerRW").get_to(_imuAccelerometerRW); }
+    if (j.contains("imuAccelerometerRWRng")) { j.at("imuAccelerometerRWRng").get_to(_imuAccelerometerRWRng); }
+    if (j.contains("imuGyroscopeRWUnit")) { j.at("imuGyroscopeRWUnit").get_to(_imuGyroscopeRWUnit); }
+    if (j.contains("imuGyroscopeRW")) { j.at("imuGyroscopeRW").get_to(_imuGyroscopeRW); }
+    if (j.contains("imuGyroscopeRWRng")) { j.at("imuGyroscopeRWRng").get_to(_imuGyroscopeRWRng); }
+    if (j.contains("imuAccelerometerIRWUnit")) { j.at("imuAccelerometerIRWUnit").get_to(_imuAccelerometerIRWUnit); }
+    if (j.contains("imuAccelerometerIRW")) { j.at("imuAccelerometerIRW").get_to(_imuAccelerometerIRW); }
+    if (j.contains("imuAccelerometerIRWRng")) { j.at("imuAccelerometerIRWRng").get_to(_imuAccelerometerIRWRng); }
+    if (j.contains("imuGyroscopeIRWUnit")) { j.at("imuGyroscopeIRWUnit").get_to(_imuGyroscopeIRWUnit); }
+    if (j.contains("imuGyroscopeIRW")) { j.at("imuGyroscopeIRW").get_to(_imuGyroscopeIRW); }
+    if (j.contains("imuGyroscopeIRWRng")) { j.at("imuGyroscopeIRWRng").get_to(_imuGyroscopeIRWRng); }
     // #########################################################################################################################################
     if (j.contains("positionBiasUnit")) { j.at("positionBiasUnit").get_to(_positionBiasUnit); }
     if (j.contains("positionBias")) { j.at("positionBias").get_to(_positionBias); }
@@ -512,7 +563,7 @@ void NAV::ErrorModel::restore(json const& j)
     if (j.contains("ambiguityRng")) { j.at("ambiguityRng").get_to(_ambiguityRng); }
     if (j.contains("cycleSlipFrequencyUnit")) { j.at("cycleSlipFrequencyUnit").get_to(_gui_cycleSlipFrequencyUnit); }
     if (j.contains("cycleSlipFrequency")) { j.at("cycleSlipFrequency").get_to(_gui_cycleSlipFrequency); }
-    if (j.contains("cycleSlipSingleCycle")) { j.at("cycleSlipSingleCycle").get_to(_gui_cycleSlipSingleCycle); }
+    if (j.contains("cycleSlipRange")) { j.at("cycleSlipRange").get_to(_gui_cycleSlipRange); }
     if (j.contains("cycleSlipDetectionProbabilityUnit")) { j.at("cycleSlipDetectionProbabilityUnit").get_to(_gui_cycleSlipDetectionProbabilityUnit); }
     if (j.contains("cycleSlipDetectionProbability")) { j.at("cycleSlipDetectionProbability").get_to(_gui_cycleSlipDetectionProbability); }
     if (j.contains("cycleSlipRng")) { j.at("cycleSlipRng").get_to(_cycleSlipRng); }
@@ -533,6 +584,21 @@ bool NAV::ErrorModel::resetNode()
     {
         _imuAccelerometerRng.resetSeed(size_t(id));
         _imuGyroscopeRng.resetSeed(size_t(id));
+
+        _imuAccelerometerRWRng.resetSeed(size_t(id));
+        _imuGyroscopeRWRng.resetSeed(size_t(id));
+        _imuAccelerometerIRWRng.resetSeed(size_t(id));
+        _imuGyroscopeIRWRng.resetSeed(size_t(id));
+
+        RandomWalkAccelerometer.setZero();
+        RandomWalkGyroscope.setZero();
+
+        IntegratedRandomWalkAccelerometer.setZero();
+        IntegratedRandomWalkGyroscope.setZero();
+        IntegratedRandomWalkAccelerometer_velocity.setZero();
+        IntegratedRandomWalkGyroscope_velocity.setZero();
+
+        _lastObservationTime.reset();
         _imuBarometerRng.resetSeed(size_t(id));
     }
     else if (_inputType == InputType::PosVelAtt)
@@ -741,49 +807,157 @@ std::shared_ptr<NAV::ImuObs> NAV::ErrorModel::receiveImuObs(const std::shared_pt
     }
     LOG_DATA("{}: gyroscopeNoiseStd = {} [rad/s]", nameId(), gyroscopeNoiseStd.transpose());
 
+    if (!_lastObservationTime.empty())
+    {
+        long double dt = std::chrono::duration<double>(imuObs->insTime - _lastObservationTime).count();
+
+        // Accelerometer RW standard deviation in platform frame coordinates [m/s^2]
+        Eigen::Vector3d accelerometerRWStd = Eigen::Vector3d::Zero();
+        switch (_imuAccelerometerRWUnit)
+        {
+        case ImuAccelerometerRWUnits::m_s2_sqrts:
+            accelerometerRWStd = _imuAccelerometerRW * sqrt(dt);
+            break;
+        case ImuAccelerometerRWUnits::m_s2_sqrth:
+            accelerometerRWStd = _imuAccelerometerRW / 60.0 * sqrt(dt);
+            break;
+        }
+        LOG_DATA("{}: accelerometerRWStd = {} [m/s^2/sqrt(s)]", nameId(), accelerometerRWStd.transpose());
+
+        RandomWalkAccelerometer += Eigen::Vector3d{
+            _imuAccelerometerRWRng.getRand_normalDist(0.0, accelerometerRWStd(0)),
+            _imuAccelerometerRWRng.getRand_normalDist(0.0, accelerometerRWStd(1)),
+            _imuAccelerometerRWRng.getRand_normalDist(0.0, accelerometerRWStd(2))
+        };
+
+        // Accelerometer IRW standard deviation in platform frame coordinates [m/s^2]
+        Eigen::Vector3d accelerometerIRWStd = Eigen::Vector3d::Zero();
+        switch (_imuAccelerometerIRWUnit)
+        {
+        case ImuAccelerometerIRWUnits::m_s3_sqrts:
+            accelerometerIRWStd = _imuAccelerometerIRW * sqrt(dt);
+            break;
+        case ImuAccelerometerIRWUnits::m_s3_sqrth:
+            accelerometerIRWStd = _imuAccelerometerIRW / 60.0 * sqrt(dt);
+            break;
+        }
+        LOG_DATA("{}: accelerometerIRWStd = {} [m/s^3/sqrt(s)]", nameId(), accelerometerIRWStd.transpose());
+
+        // compute velocity RW first
+        IntegratedRandomWalkAccelerometer_velocity += Eigen::Vector3d{
+            _imuAccelerometerIRWRng.getRand_normalDist(0.0, accelerometerIRWStd(0)),
+            _imuAccelerometerIRWRng.getRand_normalDist(0.0, accelerometerIRWStd(1)),
+            _imuAccelerometerIRWRng.getRand_normalDist(0.0, accelerometerIRWStd(2))
+        };
+
+        // then compute IRW
+        IntegratedRandomWalkAccelerometer = IntegratedRandomWalkAccelerometer + IntegratedRandomWalkAccelerometer_velocity * dt;
+
+        // Gyro RW standard deviation in platform frame coordinates [m/s^2]
+        Eigen::Vector3d gyroscopeRWStd = Eigen::Vector3d::Zero();
+        switch (_imuGyroscopeRWUnit)
+        {
+        case ImuGyroscopeRWUnits::rad_s_sqrts:
+            gyroscopeRWStd = _imuGyroscopeRW * sqrt(dt);
+            break;
+        case ImuGyroscopeRWUnits::rad_s_sqrth:
+            gyroscopeRWStd = _imuGyroscopeRW / 60.0 * sqrt(dt);
+            break;
+        case ImuGyroscopeRWUnits::deg_s_sqrts:
+            gyroscopeRWStd = deg2rad(_imuGyroscopeRW) * sqrt(dt);
+            break;
+        case ImuGyroscopeRWUnits::deg_s_sqrth:
+            gyroscopeRWStd = deg2rad(_imuGyroscopeRW) / 60.0 * sqrt(dt);
+            break;
+        }
+        LOG_DATA("{}: gyroscopeRWStd = {} [rad/s/sqrt(s)]", nameId(), gyroscopeRWStd.transpose());
+
+        RandomWalkGyroscope += Eigen::Vector3d{
+            _imuGyroscopeRWRng.getRand_normalDist(0.0, gyroscopeRWStd(0)),
+            _imuGyroscopeRWRng.getRand_normalDist(0.0, gyroscopeRWStd(1)),
+            _imuGyroscopeRWRng.getRand_normalDist(0.0, gyroscopeRWStd(2))
+        };
+
+        // Gyro RW standard deviation in platform frame coordinates [m/s^2]
+        Eigen::Vector3d gyroscopeIRWStd = Eigen::Vector3d::Zero();
+        switch (_imuGyroscopeIRWUnit)
+        {
+        case ImuGyroscopeIRWUnits::rad_s2_sqrts:
+            gyroscopeIRWStd = _imuGyroscopeIRW * sqrt(dt);
+            break;
+        case ImuGyroscopeIRWUnits::rad_s2_sqrth:
+            gyroscopeIRWStd = _imuGyroscopeIRW / 60.0 * sqrt(dt);
+            break;
+        case ImuGyroscopeIRWUnits::deg_s2_sqrts:
+            gyroscopeIRWStd = deg2rad(_imuGyroscopeIRW) * sqrt(dt);
+            break;
+        case ImuGyroscopeIRWUnits::deg_s2_sqrth:
+            gyroscopeIRWStd = deg2rad(_imuGyroscopeIRW) / 60.0 * sqrt(dt);
+            break;
+        }
+        LOG_DATA("{}: gyroscopeIRWStd = {} [rad/s2/sqrt(s)]", nameId(), gyroscopeIRWStd.transpose());
+
+        // compute velocity RW first
+        IntegratedRandomWalkGyroscope_velocity += Eigen::Vector3d{
+            _imuGyroscopeIRWRng.getRand_normalDist(0.0, gyroscopeIRWStd(0)),
+            _imuGyroscopeIRWRng.getRand_normalDist(0.0, gyroscopeIRWStd(1)),
+            _imuGyroscopeIRWRng.getRand_normalDist(0.0, gyroscopeIRWStd(2))
+        };
+
+        // then compute IRW
+        IntegratedRandomWalkGyroscope += IntegratedRandomWalkGyroscope_velocity * dt;
+    }
+
     // #########################################################################################################################################
 
     imuObs->p_acceleration += accelerometerBias_p
                               + Eigen::Vector3d{ _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(0)),
                                                  _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(1)),
-                                                 _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2)) };
+                                                 _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2)) }
+                              + RandomWalkAccelerometer
+                              + IntegratedRandomWalkAccelerometer;
     imuObs->p_angularRate += gyroscopeBias_p
                              + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0)),
                                                 _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1)),
-                                                _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) };
+                                                _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) }
+                             + RandomWalkGyroscope
+                             + IntegratedRandomWalkGyroscope;
 
-    /// TODO Baro Rechnung
-    if (imuObs->altitudeUncomp.has_value())
+    _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2))
+};
+
+/// TODO Baro Rechnung
+if (imuObs->altitudeUncomp.has_value())
+{
+    double imuBaroTempBias_p = (imuObs->altitudeUncomp.value() / 288.15) * _imuBaroTempBias;                                                        // (H/T_0) * deltaT
+    double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitudeUncomp.value()) * _imuBaroPressureBias * 100; //(R/gP_0)*(H*beta+T_o) deltaP
+    double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitudeUncomp.value() / 288.15)) * _imuBaroTempBias * _imuBaroPressureBias * 100;
+    _imuBaroDrift = _imuBaroDrift + _imuBarometerRng.getRand_normalDist(0.0, _imuBaroDriftVar);
+
+    imuObs->altitudeUncomp.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
+    imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
+
+    switch (_imuBarometerNoiseUnit)
     {
-        double imuBaroTempBias_p = (imuObs->altitudeUncomp.value() / 288.15) * _imuBaroTempBias;                                                        // (H/T_0) * deltaT
-        double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitudeUncomp.value()) * _imuBaroPressureBias * 100; //(R/gP_0)*(H*beta+T_o) deltaP
-        double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitudeUncomp.value() / 288.15)) * _imuBaroTempBias * _imuBaroPressureBias * 100;
-        _imuBaroDrift = _imuBaroDrift + _imuBarometerRng.getRand_normalDist(0.0, _imuBaroDriftVar);
-
-        imuObs->altitudeUncomp.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
+    case ImuBarometerNoiseUnits::hPa:
+    case ImuBarometerNoiseUnits::hPa2:
+        imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
+        imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
+        break;
+    case ImuBarometerNoiseUnits::m:
+    case ImuBarometerNoiseUnits::m2:
+        imuObs->altitudeUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
         imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
-
-        switch (_imuBarometerNoiseUnit)
-        {
-        case ImuBarometerNoiseUnits::hPa:
-        case ImuBarometerNoiseUnits::hPa2:
-            imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
-            imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
-            break;
-        case ImuBarometerNoiseUnits::m:
-        case ImuBarometerNoiseUnits::m2:
-            imuObs->altitudeUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
-            imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
-            break;
-        }
+        break;
     }
-    else
-    {
-    }
-    // imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
-    // imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
+}
+else
+{
+}
+// imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
+// imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
 
-    return imuObs;
+return imuObs;
 }
 
 std::shared_ptr<NAV::ImuObsWDelta> NAV::ErrorModel::receiveImuObsWDelta(const std::shared_ptr<ImuObsWDelta>& imuObs)
@@ -845,25 +1019,132 @@ std::shared_ptr<NAV::ImuObsWDelta> NAV::ErrorModel::receiveImuObsWDelta(const st
     }
     LOG_DATA("{}: gyroscopeNoiseStd = {} [rad/s]", nameId(), gyroscopeNoiseStd.transpose());
 
+    if (!_lastObservationTime.empty())
+    {
+        long double dt = std::chrono::duration<double>(imuObs->insTime - _lastObservationTime).count();
+
+        // Accelerometer RW standard deviation in platform frame coordinates [m/s^2]
+        Eigen::Vector3d accelerometerRWStd = Eigen::Vector3d::Zero();
+        switch (_imuAccelerometerRWUnit)
+        {
+        case ImuAccelerometerRWUnits::m_s2_sqrts:
+            accelerometerRWStd = _imuAccelerometerRW * sqrt(dt);
+            break;
+        case ImuAccelerometerRWUnits::m_s2_sqrth:
+            accelerometerRWStd = _imuAccelerometerRW / 60.0 * sqrt(dt);
+            break;
+        }
+        LOG_DATA("{}: accelerometerRWStd = {} [m/s^2/sqrt(s)]", nameId(), accelerometerRWStd.transpose());
+
+        RandomWalkAccelerometer += Eigen::Vector3d{
+            _imuAccelerometerRWRng.getRand_normalDist(0.0, accelerometerRWStd(0)),
+            _imuAccelerometerRWRng.getRand_normalDist(0.0, accelerometerRWStd(1)),
+            _imuAccelerometerRWRng.getRand_normalDist(0.0, accelerometerRWStd(2))
+        };
+
+        // Accelerometer IRW standard deviation in platform frame coordinates [m/s^2]
+        Eigen::Vector3d accelerometerIRWStd = Eigen::Vector3d::Zero();
+        switch (_imuAccelerometerIRWUnit)
+        {
+        case ImuAccelerometerIRWUnits::m_s3_sqrts:
+            accelerometerIRWStd = _imuAccelerometerIRW * sqrt(dt);
+            break;
+        case ImuAccelerometerIRWUnits::m_s3_sqrth:
+            accelerometerIRWStd = _imuAccelerometerIRW / 60.0 * sqrt(dt);
+            break;
+        }
+        LOG_DATA("{}: accelerometerIRWStd = {} [m/s^3/sqrt(s)]", nameId(), accelerometerIRWStd.transpose());
+
+        // compute velocity RW first
+        IntegratedRandomWalkAccelerometer_velocity += Eigen::Vector3d{
+            _imuAccelerometerIRWRng.getRand_normalDist(0.0, accelerometerIRWStd(0)),
+            _imuAccelerometerIRWRng.getRand_normalDist(0.0, accelerometerIRWStd(1)),
+            _imuAccelerometerIRWRng.getRand_normalDist(0.0, accelerometerIRWStd(2))
+        };
+
+        // then compute IRW
+        IntegratedRandomWalkAccelerometer = IntegratedRandomWalkAccelerometer + IntegratedRandomWalkAccelerometer_velocity * dt;
+
+        // Gyro RW standard deviation in platform frame coordinates [m/s^2]
+        Eigen::Vector3d gyroscopeRWStd = Eigen::Vector3d::Zero();
+        switch (_imuGyroscopeRWUnit)
+        {
+        case ImuGyroscopeRWUnits::rad_s_sqrts:
+            gyroscopeRWStd = _imuGyroscopeRW * sqrt(dt);
+            break;
+        case ImuGyroscopeRWUnits::rad_s_sqrth:
+            gyroscopeRWStd = _imuGyroscopeRW / 60.0 * sqrt(dt);
+            break;
+        case ImuGyroscopeRWUnits::deg_s_sqrts:
+            gyroscopeRWStd = deg2rad(_imuGyroscopeRW) * sqrt(dt);
+            break;
+        case ImuGyroscopeRWUnits::deg_s_sqrth:
+            gyroscopeRWStd = deg2rad(_imuGyroscopeRW) / 60.0 * sqrt(dt);
+            break;
+        }
+        LOG_DATA("{}: gyroscopeRWStd = {} [rad/s/sqrt(s)]", nameId(), gyroscopeRWStd.transpose());
+
+        RandomWalkGyroscope += Eigen::Vector3d{
+            _imuGyroscopeRWRng.getRand_normalDist(0.0, gyroscopeRWStd(0)),
+            _imuGyroscopeRWRng.getRand_normalDist(0.0, gyroscopeRWStd(1)),
+            _imuGyroscopeRWRng.getRand_normalDist(0.0, gyroscopeRWStd(2))
+        };
+
+        // Gyro RW standard deviation in platform frame coordinates [m/s^2]
+        Eigen::Vector3d gyroscopeIRWStd = Eigen::Vector3d::Zero();
+        switch (_imuGyroscopeIRWUnit)
+        {
+        case ImuGyroscopeIRWUnits::rad_s2_sqrts:
+            gyroscopeIRWStd = _imuGyroscopeIRW * sqrt(dt);
+            break;
+        case ImuGyroscopeIRWUnits::rad_s2_sqrth:
+            gyroscopeIRWStd = _imuGyroscopeIRW / 60.0 * sqrt(dt);
+            break;
+        case ImuGyroscopeIRWUnits::deg_s2_sqrts:
+            gyroscopeIRWStd = deg2rad(_imuGyroscopeIRW) * sqrt(dt);
+            break;
+        case ImuGyroscopeIRWUnits::deg_s2_sqrth:
+            gyroscopeIRWStd = deg2rad(_imuGyroscopeIRW) / 60.0 * sqrt(dt);
+            break;
+        }
+        LOG_DATA("{}: gyroscopeIRWStd = {} [rad/s2/sqrt(s)]", nameId(), gyroscopeIRWStd.transpose());
+
+        // compute velocity RW first
+        IntegratedRandomWalkGyroscope_velocity += Eigen::Vector3d{
+            _imuGyroscopeIRWRng.getRand_normalDist(0.0, gyroscopeIRWStd(0)),
+            _imuGyroscopeIRWRng.getRand_normalDist(0.0, gyroscopeIRWStd(1)),
+            _imuGyroscopeIRWRng.getRand_normalDist(0.0, gyroscopeIRWStd(2))
+        };
+
+        // then compute IRW
+        IntegratedRandomWalkGyroscope += IntegratedRandomWalkGyroscope_velocity * dt;
+    }
+
     // #########################################################################################################################################
 
     imuObs->dvel += accelerometerBias_p * imuObs->dtime
                     + Eigen::Vector3d{ _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(0) / std::sqrt(_imuObsWDeltaAverageWindow)),
                                        _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(1) / std::sqrt(_imuObsWDeltaAverageWindow)),
-                                       _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2) / std::sqrt(_imuObsWDeltaAverageWindow)) };
+                                       _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2) / std::sqrt(_imuObsWDeltaAverageWindow)) }
+                    + imuObs->dtime * (RandomWalkAccelerometer + IntegratedRandomWalkAccelerometer);
     imuObs->dtheta += gyroscopeBias_p * imuObs->dtime
                       + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0) / std::sqrt(_imuObsWDeltaAverageWindow)),
                                          _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1) / std::sqrt(_imuObsWDeltaAverageWindow)),
-                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2) / std::sqrt(_imuObsWDeltaAverageWindow)) };
+                                         _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2) / std::sqrt(_imuObsWDeltaAverageWindow)) }
+                      + imuObs->dtime * (RandomWalkGyroscope + IntegratedRandomWalkGyroscope);
 
     imuObs->p_acceleration += accelerometerBias_p
                               + Eigen::Vector3d{ _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(0)),
                                                  _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(1)),
-                                                 _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2)) };
+                                                 _imuAccelerometerRng.getRand_normalDist(0.0, accelerometerNoiseStd(2)) }
+                              + RandomWalkAccelerometer
+                              + IntegratedRandomWalkAccelerometer;
     imuObs->p_angularRate += gyroscopeBias_p
                              + Eigen::Vector3d{ _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(0)),
                                                 _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(1)),
-                                                _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) };
+                                                _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2)) }
+                             + RandomWalkGyroscope
+                             + IntegratedRandomWalkGyroscope;
     return imuObs;
 }
 
@@ -1087,7 +1368,6 @@ std::shared_ptr<NAV::GnssObs> NAV::ErrorModel::receiveGnssObs(const std::shared_
             if (obs.satSigId.freq() & _filterFreq                                                // GUI selected frequencies
                 && obs.satSigId.code & _filterCode                                               // GUI selected codes
                 && _gui_cycleSlipFrequency != 0.0                                                // 0 Frequency means disabled
-                && _gui_ambiguityLimits[0] < _gui_ambiguityLimits[1]                             // We generating ambiguities
                 && !_lastObservationTime.empty()                                                 // Do not apply a cycle slip on the first message
                 && (_cycleSlips.empty() || _cycleSlips.back().time < _cycleSlipWindowStartTime)) // In the current window, there was no cycle-slip yet
             {
@@ -1097,17 +1377,29 @@ std::shared_ptr<NAV::GnssObs> NAV::ErrorModel::receiveGnssObs(const std::shared_
                     || (gnssObs->insTime >= _cycleSlipWindowStartTime + dtCycleSlip - std::chrono::nanoseconds(static_cast<int64_t>((dtMessage + 0.001) * 1e9)))) // Last message this window
                 {
                     int newAmbiguity = 0;
-                    if (_gui_cycleSlipSingleCycle && !_ambiguities[obs.satSigId].empty())
+                    int oldAmbiguity = !_ambiguities[obs.satSigId].empty()
+                                           ? _ambiguities[obs.satSigId].back().second
+                                           : static_cast<int>(_ambiguityRng.getRand_uniformIntDist(_gui_ambiguityLimits[0], _gui_ambiguityLimits[1]));
+                    auto deltaAmbiguity = static_cast<int>(_cycleSlipRng.getRand_uniformIntDist(1, _gui_cycleSlipRange));
+                    auto signAmbiguity = _cycleSlipRng.getRand_uniformIntDist(0, 1) == 0.0 ? 1 : -1;
+
+                    if (_gui_ambiguityLimits[0] == _gui_ambiguityLimits[1]) // Ambiguities disabled
                     {
-                        int oldAmbiguity = _ambiguities[obs.satSigId].back().second;
-                        if (oldAmbiguity == _gui_ambiguityLimits[0]) { newAmbiguity = std::min(oldAmbiguity + 1, _gui_ambiguityLimits[1]); }
-                        else if (oldAmbiguity == _gui_ambiguityLimits[1]) { newAmbiguity = std::max(oldAmbiguity - 1, _gui_ambiguityLimits[0]); }
-                        else { newAmbiguity = oldAmbiguity + (_cycleSlipRng.getRand_uniformIntDist(0, 1) == 0 ? -1 : +1); }
+                        newAmbiguity = oldAmbiguity + signAmbiguity * deltaAmbiguity;
+                    }
+                    else if (oldAmbiguity == _gui_ambiguityLimits[0])
+                    {
+                        newAmbiguity = std::min(oldAmbiguity + deltaAmbiguity, _gui_ambiguityLimits[1]);
+                    }
+                    else if (oldAmbiguity == _gui_ambiguityLimits[1])
+                    {
+                        newAmbiguity = std::max(oldAmbiguity - deltaAmbiguity, _gui_ambiguityLimits[0]);
                     }
                     else
                     {
-                        newAmbiguity = static_cast<int>(_ambiguityRng.getRand_uniformIntDist(_gui_ambiguityLimits[0], _gui_ambiguityLimits[1]));
+                        newAmbiguity = std::clamp(oldAmbiguity + signAmbiguity * deltaAmbiguity, _gui_ambiguityLimits[0], _gui_ambiguityLimits[1]);
                     }
+
                     _ambiguities[obs.satSigId].emplace_back(gnssObs->insTime, newAmbiguity);
 
                     if (_cycleSlipRng.getRand_uniformRealDist(0.0, 1.0) <= cycleSlipDetectionProbability)
@@ -1121,12 +1413,12 @@ std::shared_ptr<NAV::GnssObs> NAV::ErrorModel::receiveGnssObs(const std::shared_
             }
 
             // ----------------------------------------- Ambiguity -------------------------------------------
-            if (_gui_ambiguityLimits[0] != _gui_ambiguityLimits[1])
+            if (!_ambiguities.contains(obs.satSigId) && _gui_ambiguityLimits[0] != _gui_ambiguityLimits[1])
             {
-                if (!_ambiguities.contains(obs.satSigId))
-                {
-                    _ambiguities[obs.satSigId].emplace_back(gnssObs->insTime, _ambiguityRng.getRand_uniformIntDist(_gui_ambiguityLimits[0], _gui_ambiguityLimits[1]));
-                }
+                _ambiguities[obs.satSigId].emplace_back(gnssObs->insTime, _ambiguityRng.getRand_uniformIntDist(_gui_ambiguityLimits[0], _gui_ambiguityLimits[1]));
+            }
+            if (_ambiguities.contains(obs.satSigId))
+            {
                 obs.carrierPhase.value().value += _ambiguities.at(obs.satSigId).back().second;
             }
         }

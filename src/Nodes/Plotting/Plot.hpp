@@ -13,10 +13,12 @@
 
 #pragma once
 
+#include <array>
 #include <implot.h>
 
 #include <map>
 #include <mutex>
+#include <unordered_set>
 
 #include "internal/Node/Node.hpp"
 #include "internal/gui/widgets/DynamicInputPins.hpp"
@@ -300,7 +302,7 @@ class Plot : public Node, public CommonLog
         /// @param[in] title Title of the ImPlot
         /// @param[in] nInputPins Amount of inputPins
         PlotInfo(const std::string& title, size_t nInputPins)
-            : title(title), headerText(title), selectedXdata(nInputPins, 0) {}
+            : title(title), headerText(title), selectedXdata(nInputPins, 1) {}
 
         /// Size of the plot
         ImVec2 size{ -1, 300 };
@@ -367,6 +369,9 @@ class Plot : public Node, public CommonLog
     /// @param[in] pinIdx Input pin index to delete
     static void pinDeleteCallback(Node* node, size_t pinIdx);
 
+    /// Index of the GPST data (unix timestamp)
+    size_t GPST_PLOT_IDX = 1;
+
     /// Data storage for each pin
     std::vector<PinData> _pinData;
 
@@ -401,6 +406,9 @@ class Plot : public Node, public CommonLog
     /// Index of the Collapsible Header currently being dragged
     int _dragAndDropHeaderIndex = -1;
 
+    /// Values to force the x axis range to and a set of plotIdx to force
+    std::pair<std::unordered_set<size_t>, ImPlotRange> _forceXaxisRange{};
+
     /// Start position for the calculation of relative North-South and East-West
     std::optional<gui::widgets::PositionWithFrame> _originPosition;
 
@@ -409,7 +417,7 @@ class Plot : public Node, public CommonLog
 
     /// @brief Dynamic input pins
     /// @attention This should always be the last variable in the header, because it accesses others through the function callbacks
-    gui::widgets::DynamicInputPins _dynamicInputPins{ 0, this, pinAddCallback, pinDeleteCallback, 5 };
+    gui::widgets::DynamicInputPins _dynamicInputPins{ 0, this, pinAddCallback, pinDeleteCallback, 1 };
 
     /// @brief Adds a event to a certain point in time
     /// @param[in] pinIndex Index of the input pin where the data was received

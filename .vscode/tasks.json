@@ -569,7 +569,7 @@
                 "--exclude-regex",
                 "'\\[flow\\]'",
                 // "--tests-regex",
-                // "'ScrollingBuffer'"
+                // "'ScrollingBuffer'",
                 // "--verbose",
             ],
             "options": {
@@ -705,6 +705,7 @@
                 // "--output-path=logs",
                 // "--rotate-output",
                 // "--implot-config=\"config/implot.json\"",
+                "--global-log-level=trace", // trace/debug/info/warning/error/critical/off
                 "--console-log-level=trace", // trace/debug/info/warning/error/critical/off
                 "--file-log-level=trace", // trace/debug/info/warning/error/critical/off
                 "--log-filter=LooselyCoupledKF.cpp"

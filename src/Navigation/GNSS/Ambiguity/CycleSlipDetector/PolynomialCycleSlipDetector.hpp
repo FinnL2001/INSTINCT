@@ -51,8 +51,9 @@ class PolynomialCycleSlipDetector
     /// @brief Constructor
     /// @param[in] windowSize Amount of points to use for the fit (sliding window)
     /// @param[in] polyDegree Polynomial degree to fit
-    explicit PolynomialCycleSlipDetector(size_t windowSize, size_t polyDegree)
-        : _windowSize(windowSize), _polyDegree(polyDegree) {}
+    /// @param[in] enabled Whether the detector is enabled
+    explicit PolynomialCycleSlipDetector(size_t windowSize, size_t polyDegree, bool enabled = true)
+        : _enabled(enabled), _windowSize(windowSize), _polyDegree(polyDegree) {}
 
     /// @brief Checks for a cycle slip
     /// @param[in] key Key of the detector
@@ -60,7 +61,7 @@ class PolynomialCycleSlipDetector
     /// @param[in] measurementDifference Measurement difference
     /// @param[in] threshold Threshold to categorize a measurement as cycle slip
     /// @return Cycle-slip result
-    [[nodiscard]] PolynomialCycleSlipDetectorResult checkForCycleSlip(const Key& key, InsTime insTime, double measurementDifference, double threshold = 0.1)
+    [[nodiscard]] PolynomialCycleSlipDetectorResult checkForCycleSlip(const Key& key, InsTime insTime, double measurementDifference, double threshold)
     {
         if (!_enabled) { return PolynomialCycleSlipDetectorResult::Disabled; }
         if (!_detectors.contains(key))
