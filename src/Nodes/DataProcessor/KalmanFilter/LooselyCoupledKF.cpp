@@ -2211,19 +2211,19 @@ NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
     NAV::LooselyCoupledKF::e_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate)
 {
     // TODO
-    // double lat = lla_positionEstimate(0);
-    // double lon = lla_positionEstimate(1);
-    // Eigen::Vector3d n_poslocalFrame(lat, lon, 0);
-    // Eigen::Vector3d e_poslocalFrame = trafo::lla2ecef_WGS84(n_poslocalFrame);
+    double lat = lla_positionEstimate(0);
+    double lon = lla_positionEstimate(1);
+    Eigen::Vector3d n_poslocalFrame(lat, lon, 0);
+    Eigen::Vector3d e_poslocalFrame = trafo::lla2ecef_WGS84(n_poslocalFrame);
     // LOG_DEBUG("e_poslocalFrame =\n{}", e_poslocalFrame);
-    // Eigen::Vector3d e_positionEstimate_b = e_positionEstimate - e_poslocalFrame;
+    Eigen::Vector3d e_positionEstimate_b = e_positionEstimate - e_poslocalFrame;
     double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
-    // double z = std::sin(lat) * e_positionEstimate_b(2);
-    // double x = std::cos(lat) * std::cos(lon) * e_positionEstimate_b(0);
-    // double y = std::cos(lat) * std::sin(lon) * e_positionEstimate_b(1);
-    // double control = (z + x + y);
-    double heightest = trafo::ecef2lla_WGS84(e_positionEstimate)(2);
-    double deltaAlt = baroHeightMeasurement - heightest + geoidHeight;
+    double z = std::sin(lat) * e_positionEstimate_b(2);
+    double x = std::cos(lat) * std::cos(lon) * e_positionEstimate_b(0);
+    double y = std::cos(lat) * std::sin(lon) * e_positionEstimate_b(1);
+    double control = (z + x + y);
+    //double heightest = trafo::ecef2lla_WGS84(e_positionEstimate)(2);
+    double deltaAlt = baroHeightMeasurement - control  + geoidHeight;
 
     Eigen::Matrix<double, 1, 1> innovation;
     innovation << deltaAlt;

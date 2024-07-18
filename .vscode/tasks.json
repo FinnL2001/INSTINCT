@@ -514,9 +514,9 @@
                 // "--output-path=logs",
                 // "--rotate-output",
                 // "--implot-config=\"config/implot.json\"",
-                "--console-log-level=trace", // trace/debug/info/warning/error/critical/off
-                "--file-log-level=trace", // trace/debug/info/warning/error/critical/off
-                // "--log-filter=SinglePointPositioning.cpp",
+                "--console-log-level=debug", // trace/debug/info/warning/error/critical/off
+                "--file-log-level=debug", // trace/debug/info/warning/error/critical/off
+                "--log-filter=LooselyCoupledKF.cpp",
                 // ================ To configure tests ================
                 // "--flow-path=test/flow",
                 // "--input-path=test/data",
@@ -707,7 +707,7 @@
                 // "--implot-config=\"config/implot.json\"",
                 "--console-log-level=trace", // trace/debug/info/warning/error/critical/off
                 "--file-log-level=trace", // trace/debug/info/warning/error/critical/off
-                // "--log-filter=SinglePointPositioning.cpp",
+                "--log-filter=LooselyCoupledKF.cpp"
                 // ================ To configure tests ================
                 // "--flow-path=test/flow",
                 // "--input-path=test/data",
