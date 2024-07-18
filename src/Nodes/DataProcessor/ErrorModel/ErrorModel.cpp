@@ -923,41 +923,40 @@ std::shared_ptr<NAV::ImuObs> NAV::ErrorModel::receiveImuObs(const std::shared_pt
                              + RandomWalkGyroscope
                              + IntegratedRandomWalkGyroscope;
 
-    _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2))
-};
+    _imuGyroscopeRng.getRand_normalDist(0.0, gyroscopeNoiseStd(2));
 
-/// TODO Baro Rechnung
-if (imuObs->altitudeUncomp.has_value())
-{
-    double imuBaroTempBias_p = (imuObs->altitudeUncomp.value() / 288.15) * _imuBaroTempBias;                                                        // (H/T_0) * deltaT
-    double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitudeUncomp.value()) * _imuBaroPressureBias * 100; //(R/gP_0)*(H*beta+T_o) deltaP
-    double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitudeUncomp.value() / 288.15)) * _imuBaroTempBias * _imuBaroPressureBias * 100;
-    _imuBaroDrift = _imuBaroDrift + _imuBarometerRng.getRand_normalDist(0.0, _imuBaroDriftVar);
-
-    imuObs->altitudeUncomp.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
-    imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
-
-    switch (_imuBarometerNoiseUnit)
+    /// TODO Baro Rechnung
+    if (imuObs->altitudeUncomp.has_value())
     {
-    case ImuBarometerNoiseUnits::hPa:
-    case ImuBarometerNoiseUnits::hPa2:
-        imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
-        imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
-        break;
-    case ImuBarometerNoiseUnits::m:
-    case ImuBarometerNoiseUnits::m2:
-        imuObs->altitudeUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
-        imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
-        break;
-    }
-}
-else
-{
-}
-// imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
-// imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
+        double imuBaroTempBias_p = (imuObs->altitudeUncomp.value() / 288.15) * _imuBaroTempBias;                                                        // (H/T_0) * deltaT
+        double imuBaroPressureBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (288.15 - 6.5 * imuObs->altitudeUncomp.value()) * _imuBaroPressureBias * 100; //(R/gP_0)*(H*beta+T_o) deltaP
+        double imuBaroTempPreBias_p = (8.314 / (9.81 * 1013.25 * 100)) * (1 - (6.5 * imuObs->altitudeUncomp.value() / 288.15)) * _imuBaroTempBias * _imuBaroPressureBias * 100;
+        _imuBaroDrift = _imuBaroDrift + _imuBarometerRng.getRand_normalDist(0.0, _imuBaroDriftVar);
 
-return imuObs;
+        imuObs->altitudeUncomp.value() += imuBaroTempBias_p + imuBaroPressureBias_p + _imuBaroDrift + imuBaroTempPreBias_p;
+        imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
+
+        switch (_imuBarometerNoiseUnit)
+        {
+        case ImuBarometerNoiseUnits::hPa:
+        case ImuBarometerNoiseUnits::hPa2:
+            imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
+            imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
+            break;
+        case ImuBarometerNoiseUnits::m:
+        case ImuBarometerNoiseUnits::m2:
+            imuObs->altitudeUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
+            imuObs->airPressureUncomp.value() = calcTotalPressureStAtm(-imuObs->altitudeUncomp.value());
+            break;
+        }
+    }
+    else
+    {
+    }
+    // imuObs->airPressureUncomp.value() += _imuBarometerRng.getRand_normalDist(0.0, barometerNoiseStd);
+    // imuObs->altitudeUncomp.value() = -calcHeightStAtm(imuObs->airPressureUncomp.value());
+
+    return imuObs;
 }
 
 std::shared_ptr<NAV::ImuObsWDelta> NAV::ErrorModel::receiveImuObsWDelta(const std::shared_ptr<ImuObsWDelta>& imuObs)
