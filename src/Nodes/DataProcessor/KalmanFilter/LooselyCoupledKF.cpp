@@ -978,7 +978,7 @@ void NAV::LooselyCoupledKF::recvImuObservation(InputPin::NodeDataQueue& queue, s
     std::shared_ptr<NAV::PosVelAtt> inertialNavSol = nullptr;
 
     _lastImuObs = std::const_pointer_cast<ImuObs>(std::static_pointer_cast<const ImuObs>(nodeData));
-    if (_useCaliBaro && _getPstart)
+    if (_useCaliBaro && _getPstart && _lastImuObs->airPressureUncomp.has_value())
     {
         _Pstart = _lastImuObs->getValueAt(11).value();
         _getPstart = false;
@@ -1008,6 +1008,10 @@ void NAV::LooselyCoupledKF::recvImuObservation(InputPin::NodeDataQueue& queue, s
     {
         looselyCoupledPrediction(inertialNavSol, _inertialIntegrator.getMeasurements().back().dt, std::static_pointer_cast<const ImuObs>(nodeData)->imuPos);
 
+
+        if(_useBarometer){
+            looselyCoupledBaroUpdate();
+        }
         LOG_DATA("{}:   e_position   = {}", nameId(), inertialNavSol->e_position().transpose());
         LOG_DATA("{}:   e_velocity   = {}", nameId(), inertialNavSol->e_velocity().transpose());
         LOG_DATA("{}:   rollPitchYaw = {}", nameId(), rad2deg(inertialNavSol->rollPitchYaw()).transpose());
