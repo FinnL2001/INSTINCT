@@ -809,8 +809,9 @@ void NAV::LooselyCoupledKF::restore(json const& j)
             _initBiasGyroUnit = j.at("initBiasGyroUnit");
         }
     }
+}
 
-    bool NAV::LooselyCoupledKF::initialize()
+bool NAV::LooselyCoupledKF::initialize()
     {
         LOG_TRACE("{}: called", nameId());
 
