@@ -43,7 +43,7 @@ namespace NAV
 /// @return Geopotential Height above MSL (mean sea level) [m]
 [[nodiscard]] constexpr double calcCalibrateHeightStAtm(double pressure, double temp_start, double pres_start, double H_start)
 {
-    return (-temp_start / 0.0065 * (1 - gcem::pow(pressure / pres_start, 0.19))) + H_start;
+    return (temp_start / 0.0065 * (1 - gcem::pow(pressure / pres_start, 0.19))) + H_start;
 }
 
 /// @brief Calculates the standard atmosphere Mean Sea Level pressure
