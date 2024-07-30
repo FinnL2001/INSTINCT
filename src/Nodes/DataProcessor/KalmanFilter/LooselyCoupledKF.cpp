@@ -735,7 +735,10 @@ void NAV::LooselyCoupledKF::restore(json const& j)
     {
         _gnssMeasurementUncertaintyVelocity = j.at("gnssMeasurementUncertaintyVelocity");
     }
-
+    if (j.contains("gnssMeasurementUncertaintyVelocityOverride"))
+    {
+        j.at("gnssMeasurementUncertaintyVelocityOverride").get_to(_gnssMeasurementUncertaintyVelocityOverride);
+    }
     //--------------------------------------- R BaroMeasurement Noise covariance matrix --------------------------
     if (j.contains("baroMeasurementUncertaintyUnit"))
     {
@@ -745,9 +748,21 @@ void NAV::LooselyCoupledKF::restore(json const& j)
     {
         _baroMeasurementUncertainty = j.at("baroMeasurementUncertainty");
     }
-    if (j.contains("gnssMeasurementUncertaintyVelocityOverride"))
+    if (j.contains("useBaro"))
     {
-        j.at("gnssMeasurementUncertaintyVelocityOverride").get_to(_gnssMeasurementUncertaintyVelocityOverride);
+        j.at("useBaro").get_to(_useBarometer);
+    }
+    if (j.contains("useCaliBaro"))
+    {
+        j.at("useCaliBaro").get_to(_useCaliBaro);
+    }
+    if (j.contains("Tstart"))
+    {
+        j.at("Tstart").get_to(_Tstart);
+    }
+    if (j.contains("usePrincipelErrorEstimation"))
+    {
+        j.at("usePrincipelErrorEstimation").get_to(_usePrincipelErrorEstimation);
     }
     // -------------------------------------- 𝐏 Error covariance matrix -----------------------------------------
     if (j.contains("initCovariancePositionUnit"))
@@ -1603,12 +1618,13 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
     }
 
     LOG_DEBUG("{}: H\n{}\n", nameId(), _kalmanFilter.H);
-    // LOG_DEBUG("{}: R\n{}\n", nameId(), _kalmanFilter.R);
+    LOG_DEBUG("{}: R\n{}\n", nameId(), _kalmanFilter.R);
     LOG_DEBUG("{}: z =\n{}", nameId(), _kalmanFilter.z.transposed());
+    LOG_DEBUG("{}: HPH\n{}\n", nameId(), _kalmanFilter.H(all, all) * _kalmanFilter.P(all, all) * _kalmanFilter.H(all, all).transpose());
 
     // LOG_DEBUG("{}: K\n{}\n", nameId(), _kalmanFilter.K);
     // LOG_DEBUG("{}: x =\n{}", nameId(), _kalmanFilter.x.transposed());
-    // LOG_DEBUG("{}: P\n{}\n", nameId(), _kalmanFilter.P);
+    LOG_DEBUG("{}: P\n{}\n", nameId(), _kalmanFilter.P);
 
     // LOG_DEBUG("{}: K * z =\n{}", nameId(), (_kalmanFilter.K(all, all) * _kalmanFilter.z(all)).transpose());
 
@@ -1643,7 +1659,6 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
     }
 
     _kalmanFilter.x(all).setZero();
-
     invokeCallbacks(OUTPUT_PORT_INDEX_SOLUTION, lckfSolution);
 }
 

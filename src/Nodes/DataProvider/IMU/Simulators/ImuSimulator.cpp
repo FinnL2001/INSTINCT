@@ -1610,22 +1610,20 @@ std::shared_ptr<const NAV::NodeData> NAV::ImuSimulator::pollImuObs(size_t /* pin
         }
 
         //----------------------------------------------------AirPressure Baro------------------------------------------------------------------------
-        Eigen::Vector3<Scalar> ecef_position = trafo::lla2ecef_WGS84(lla_position);
+        // double height_geop = static_cast<double>((calcEarthRadius_E(lla_position(0)) * lla_position(2)) / (calcEarthRadius_E(lla_position(0)) + lla_position(2)));
+
         // Assuming Scalar is double or can be cast to double
         auto AltOffset = static_cast<double>(egm96_compute_altitude_offset(
             static_cast<double>(_startPosition.latLonAlt().cast<Scalar>()(0)),
             static_cast<double>(_startPosition.latLonAlt().cast<Scalar>()(1))));
 
-        Eigen::Vector3<Scalar> vec;
-        vec << _startPosition.latLonAlt().cast<Scalar>()(0),
-            _startPosition.latLonAlt().cast<Scalar>()(1),
-            static_cast<Scalar>(AltOffset);
-        Eigen::Vector3<Scalar> ned_position = trafo::ecef2ned(ecef_position, vec);
+        double altitude_unbiased = static_cast<double>(lla_position(2)) - AltOffset;
 
-        auto altMsl = -static_cast<double>(ned_position(2));
-        // TODO baro auf OBS
-        auto airPressure_unbiased = calcTotalPressureStAtm(altMsl);
-        auto altitude_unbiased = calcHeightStAtm(airPressure_unbiased);
+        auto airPressure_unbiased = calcTotalPressureStAtm(altitude_unbiased);
+
+        altitude_unbiased = calcHeightStAtm(airPressure_unbiased);
+
+        // auto alt_ubiased_geom = (calcEarthRadius_E(lla_position(0)) * altitude_unbiased) / (calcEarthRadius_E(lla_position(0)) - altitude_unbiased);
 
         // ω_ib_b = b_Quat_n * ω_ib_n
         //                            = 0
