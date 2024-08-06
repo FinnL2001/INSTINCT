@@ -35,6 +35,7 @@ namespace nm = NAV::NodeManager;
 #include "util/Logger.hpp"
 #include "util/Assert.h"
 #include "Navigation/Atmosphere/Pressure/Models/StandardAtmosphere.hpp"
+#include "Navigation/Atmosphere/Temperature/Models/StandardAtmosphere.hpp"
 #include "Navigation/Geoid/EGM96.hpp"
 
 #include "NodeData/IMU/ImuObsWDelta.hpp"
@@ -117,34 +118,6 @@ void NAV::LooselyCoupledKF::guiConfig()
     float unitWidth = 150.0F * gui::NodeEditorApplication::windowFontRatio();
 
     float taylorOrderWidth = 75.0F * gui::NodeEditorApplication::windowFontRatio();
-    if (ImGui::CollapsingHeader(fmt::format("Use the Barometer as a second Measurement##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
-    {
-        if (ImGui::Checkbox(fmt::format("Second Measurement?##{}", size_t(id)).c_str(), &_useBarometer))
-        {
-            updateExternalPvaInitPin();
-            flow::ApplyChanges();
-        }
-        if (ImGui::Checkbox(fmt::format("BaroCalibration?##{}", size_t(id)).c_str(), &_useCaliBaro))
-        {
-            updateExternalPvaInitPin();
-            flow::ApplyChanges();
-        }
-        ImGui::SameLine();
-        gui::widgets::HelpMarker("Uses GPS-Height and the start temperature ");
-        if (ImGui::Checkbox(fmt::format("Principel Error (Pres and temp) Estimation?##{}", size_t(id)).c_str(), &_usePrincipelErrorEstimation))
-        {
-            updateExternalPvaInitPin();
-            flow::ApplyChanges();
-        }
-        ImGui::SameLine();
-        gui::widgets::HelpMarker("Estimation of the Pricipel Error as Bias in the Kalman Start Values are Calculated automaticly from GPS height and Start Temperature");
-
-        if (ImGui::InputDouble("Temperature at the Start [K]", &_Tstart))
-        {
-            updateExternalPvaInitPin();
-            flow::ApplyChanges();
-        }
-    }
 
     if (ImGui::CollapsingHeader(fmt::format("Initialization##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
     {
@@ -561,6 +534,117 @@ void NAV::LooselyCoupledKF::guiConfig()
             flow::ApplyChanges();
         }
     }
+    if (ImGui::CollapsingHeader(fmt::format("Use the Barometer as a second Measurement##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (ImGui::Checkbox(fmt::format("Second Measurement?##{}", size_t(id)).c_str(), &_useBarometer))
+        {
+            updateExternalPvaInitPin();
+            flow::ApplyChanges();
+        }
+        if (ImGui::Checkbox(fmt::format("BaroCalibration?##{}", size_t(id)).c_str(), &_useCaliBaro))
+        {
+            updateExternalPvaInitPin();
+            flow::ApplyChanges();
+        }
+        ImGui::SameLine();
+        gui::widgets::HelpMarker("Uses GPS-Height and the start temperature ");
+
+        if (ImGui::InputDouble("Temperature at the Start [K]", &_Tstart))
+        {
+            updateExternalPvaInitPin();
+            flow::ApplyChanges();
+        }
+    }
+
+    if (ImGui::CollapsingHeader(fmt::format("Estimate Baro Principle Error##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+    {
+        if (ImGui::Checkbox(fmt::format("Principel Error (Pres and temp) Estimation?##{}", size_t(id)).c_str(), &_usePrincipelErrorEstimation))
+        {
+            updateExternalPvaInitPin();
+            flow::ApplyChanges();
+        }
+        ImGui::SameLine();
+        gui::widgets::HelpMarker("Estimation of the Pricipel Error as Bias in the Kalman Start Values are Calculated automaticly from GPS height and Start Temperature");
+        if (_qCalculationAlgorithm == QCalculationAlgorithm::VanLoan)
+        {
+            ImGui::SetNextItemWidth(configWidth + ImGui::GetStyle().ItemSpacing.x);
+            if (ImGui::Combo(fmt::format("Random Process Barometer##{}", size_t(id)).c_str(), reinterpret_cast<int*>(&_randomProcessBaro), "Random Walk\0"
+                                                                                                                                           "Gauss-Markov 1st Order\0\0"))
+            {
+                LOG_DEBUG("{}: randomProcessBaro changed to {}", nameId(), fmt::underlying(_randomProcessBaro));
+                flow::ApplyChanges();
+            }
+        }
+
+        if (gui::widgets::InputDoubleWithUnit(fmt::format("Standard deviation σ of the Baro Pres {}##{}",
+                                                          _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1
+                                                              ? "dynamic bias, in σ²/τ"
+                                                              : (_randomProcessBaro == RandomProcess::RandomWalk ? "bias noise" : "bias noise, in √(2σ²β)"),
+                                                          size_t(id))
+                                                  .c_str(),
+                                              configWidth, unitWidth, &_stdev_baroPres, reinterpret_cast<int*>(&_stdev_baroPres), "hPa\0\0"))
+        {
+            flow::ApplyChanges();
+        }
+
+        if (_randomProcessBaro == RandomProcess::GaussMarkov1 || _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1)
+        {
+            int unitCorrelationLength = 0;
+            if (gui::widgets::InputDoubleLWithUnit(fmt::format("Correlation length τ of the Baro Pres {}##Correlation length τ of the accel dynamic bias {}",
+                                                               _qCalculationAlgorithm == QCalculationAlgorithm::VanLoan ? "bias noise" : "dynamic bias", size_t(id))
+                                                       .c_str(),
+                                                   configWidth, unitWidth, &_tau_baroPres, 0., std::numeric_limits<double>::max(),
+                                                   &unitCorrelationLength, "s\0\0"))
+            {
+                flow::ApplyChanges();
+            }
+        }
+        if (gui::widgets::InputDoubleWithUnit(fmt::format("Standard deviation σ of the Baro Temp {}##{}",
+                                                          _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1
+                                                              ? "dynamic bias, in σ²/τ"
+                                                              : (_randomProcessBaro == RandomProcess::RandomWalk ? "bias noise" : "bias noise, in √(2σ²β)"),
+                                                          size_t(id))
+                                                  .c_str(),
+                                              configWidth, unitWidth, &_stdev_baroTemp, reinterpret_cast<int*>(&_stdev_baroTemp), "K\0\0"))
+        {
+            flow::ApplyChanges();
+        }
+
+        if (_randomProcessBaro == RandomProcess::GaussMarkov1 || _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1)
+        {
+            int unitCorrelationLength = 0;
+            if (gui::widgets::InputDoubleLWithUnit(fmt::format("Correlation length τ of the Baro Temp {}##Correlation length τ of the accel dynamic bias {}",
+                                                               _qCalculationAlgorithm == QCalculationAlgorithm::VanLoan ? "bias noise" : "dynamic bias", size_t(id))
+                                                       .c_str(),
+                                                   configWidth, unitWidth, &_tau_baroTemp, 0., std::numeric_limits<double>::max(),
+                                                   &unitCorrelationLength, "s\0\0"))
+            {
+                flow::ApplyChanges();
+            }
+        }
+        if (gui::widgets::InputDoubleWithUnit(fmt::format("Baro Pres Bias covariance ({})##{}",
+                                                          _initCovarianceBiasBaroPresUnit == InitCovarianceBiasBaroPresUnit::hPa2
+                                                              ? "Variance σ²"
+                                                              : "Standard deviation σ",
+                                                          size_t(id))
+                                                  .c_str(),
+                                              configWidth, unitWidth, &_initCovarianceBiasBaroPres, reinterpret_cast<int*>(&_initCovarianceBiasBaroPresUnit), "hPa2\0\0"
+                                                                                                                                                              "hPa\0\0"))
+        {
+            flow::ApplyChanges();
+        }
+        if (gui::widgets::InputDoubleWithUnit(fmt::format("Baro Temp Bias covariance ({})##{}",
+                                                          _initCovarianceBiasBaroTempUnit == InitCovarianceBiasBaroTempUnit::K2
+                                                              ? "Variance σ²"
+                                                              : "Standard deviation σ",
+                                                          size_t(id))
+                                                  .c_str(),
+                                              configWidth, unitWidth, &_initCovarianceBiasBaroTemp, reinterpret_cast<int*>(&_initCovarianceBiasBaroTempUnit), "K2\0\0"
+                                                                                                                                                              "K\0\0"))
+        {
+            flow::ApplyChanges();
+        }
+    }
 }
 
 [[nodiscard]] json NAV::LooselyCoupledKF::save() const
@@ -606,6 +690,13 @@ void NAV::LooselyCoupledKF::guiConfig()
 
     j["baroMeasurementUncertainty"] = _baroMeasurementUncertainty;
     j["baroMeasurementUncertaintyUnit"] = _baroMeasurementUncertaintyUnit;
+    j["stdev_baroPres"] = _stdev_baroPres;
+    j["stdev_baroTemp"] = _stdev_baroTemp;
+    j["tau_baroPres"] = _tau_baroPres;
+    j["tau_baroTemp"] = _tau_baroTemp;
+    j["randomProcessBaro"] = _randomProcessBaro;
+    j["_initCovarianceBiasBaroPres"] = _initCovarianceBiasBaroPres;
+    j["_initCovarianceBiasBaroTemp"] = _initCovarianceBiasBaroTemp;
 
     j["initCovariancePositionUnit"] = _initCovariancePositionUnit;
     j["initCovariancePosition"] = _initCovariancePosition;
@@ -748,9 +839,9 @@ void NAV::LooselyCoupledKF::restore(json const& j)
     {
         _baroMeasurementUncertainty = j.at("baroMeasurementUncertainty");
     }
-    if (j.contains("useBaro"))
+    if (j.contains("useBarometer"))
     {
-        j.at("useBaro").get_to(_useBarometer);
+        j.at("useBarometer").get_to(_useBarometer);
     }
     if (j.contains("useCaliBaro"))
     {
@@ -763,6 +854,30 @@ void NAV::LooselyCoupledKF::restore(json const& j)
     if (j.contains("usePrincipelErrorEstimation"))
     {
         j.at("usePrincipelErrorEstimation").get_to(_usePrincipelErrorEstimation);
+    }
+    if (j.contains("stdev_baroPres"))
+    {
+        j.at("stdev_baroPres").get_to(_stdev_baroPres);
+    }
+    if (j.contains("tau_baroPres"))
+    {
+        j.at("tau_baroPres").get_to(_tau_baroPres);
+    }
+    if (j.contains("stdev_baroTemp"))
+    {
+        j.at("stdev_baroTemp").get_to(_stdev_baroTemp);
+    }
+    if (j.contains("tau_baroTemp"))
+    {
+        j.at("tau_baroTemp").get_to(_tau_baroTemp);
+    }
+    if (j.contains("randomProcessBaro"))
+    {
+        j.at("randomProcessBaro").get_to(_randomProcessBaro);
+    }
+    if (j.contains("initCovarianceBiasBaroPres"))
+    {
+        j.at("initCovarianceBiasBaroPres").get_to(_initCovarianceBiasBaroPres);
     }
     // -------------------------------------- 𝐏 Error covariance matrix -----------------------------------------
     if (j.contains("initCovariancePositionUnit"))
@@ -922,14 +1037,68 @@ bool NAV::LooselyCoupledKF::initialize()
         variance_gyroBias = deg2rad(_initCovarianceBiasGyro).array().pow(2);
     }
 
-    // 𝐏 Error covariance matrix
-    _kalmanFilter.P = initialErrorCovarianceMatrix_P0(variance_angles, // Flight Angles covariance
-                                                      variance_vel,    // Velocity covariance
-                                                      _inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED
-                                                          ? lla_variance
-                                                          : e_variance,   // Position (Lat, Lon, Alt) / ECEF covariance
-                                                      variance_accelBias, // Accelerometer Bias covariance
-                                                      variance_gyroBias); // Gyroscope Bias covariance
+    double variance_baroTemp = 0;
+    if (_initCovarianceBiasBaroTempUnit == InitCovarianceBiasBaroTempUnit::K2)
+    {
+        variance_baroTemp = _initCovarianceBiasBaroTemp;
+    }
+    else if (_initCovarianceBiasBaroTempUnit == InitCovarianceBiasBaroTempUnit::K)
+    {
+        variance_baroTemp = _initCovarianceBiasBaroTemp * _initCovarianceBiasBaroTemp;
+    }
+
+    double variance_baroPres = 0;
+    if (_initCovarianceBiasBaroPresUnit == InitCovarianceBiasBaroPresUnit::hPa2)
+    {
+        variance_baroPres = _initCovarianceBiasBaroPres;
+    }
+    else if (_initCovarianceBiasBaroPresUnit == InitCovarianceBiasBaroPresUnit::hPa)
+    {
+        variance_baroPres = _initCovarianceBiasBaroPres * _initCovarianceBiasBaroPres;
+    }
+
+    if (_usePrincipelErrorEstimation && _useBarometer)
+    {
+        if (!_kalmanFilter.hasState(DeltaP))
+        {
+            _kalmanFilter.addState(DeltaP);
+        }
+
+        if (!_kalmanFilter.hasState(DeltaT))
+        {
+            _kalmanFilter.addState(DeltaT);
+        }
+
+        _kalmanFilter.P = initialErrorCovarianceMatrixBaroEst_P0(variance_angles,
+                                                                 variance_vel,
+                                                                 _inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED
+                                                                     ? lla_variance
+                                                                     : e_variance,
+                                                                 variance_accelBias,
+                                                                 variance_gyroBias,
+                                                                 variance_baroPres,
+                                                                 variance_baroTemp);
+    }
+    else
+    {
+        if (_kalmanFilter.hasState(DeltaP))
+        {
+            _kalmanFilter.removeState(DeltaP);
+        }
+
+        if (_kalmanFilter.hasState(DeltaT))
+        {
+            _kalmanFilter.removeState(DeltaT);
+        }
+        // 𝐏 Error covariance matrix
+        _kalmanFilter.P = initialErrorCovarianceMatrix_P0(variance_angles, // Flight Angles covariance
+                                                          variance_vel,    // Velocity covariance
+                                                          _inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED
+                                                              ? lla_variance
+                                                              : e_variance,   // Position (Lat, Lon, Alt) / ECEF covariance
+                                                          variance_accelBias, // Accelerometer Bias covariance
+                                                          variance_gyroBias); // Gyroscope Bias covariance
+    }
 
     // Initial acceleration bias in [m/s^2]
     Eigen::Vector3d accelBias = Eigen::Vector3d::Zero();
@@ -993,9 +1162,18 @@ void NAV::LooselyCoupledKF::recvImuObservation(InputPin::NodeDataQueue& queue, s
     std::shared_ptr<NAV::PosVelAtt> inertialNavSol = nullptr;
 
     _lastImuObs = std::const_pointer_cast<ImuObs>(std::static_pointer_cast<const ImuObs>(nodeData));
-    if (_useCaliBaro && _getPstart && _lastImuObs->airPressureUncomp.has_value())
+    if (_getPstart && _lastImuObs->airPressureUncomp.has_value())
     {
         _Pstart = _lastImuObs->getValueAt(11).value();
+        double T0_real = calcMeanSeaLevelTemp(_Heightstart_Msl, _Tstart);
+        _deltaP_start = calcMeanSeaLevelPressure(_Heightstart_Msl, _Pstart, T0_real) - P0;
+        _deltaT_start = T0_real - T0;
+
+        if (_usePrincipelErrorEstimation)
+        {
+            _kalmanFilter.x(DeltaP) = _deltaP_start;
+            _kalmanFilter.x(DeltaT) = _deltaT_start;
+        }
         _getPstart = false;
     }
     if (_useCaliBaro && _lastImuObs->airPressureUncomp.has_value())
@@ -1168,6 +1346,23 @@ void NAV::LooselyCoupledKF::looselyCoupledPrediction(const std::shared_ptr<const
         sigma_bgd = _stdev_bgd;
         break;
     }
+
+    double sigma_baroPres = 0;
+    switch (_StdevBaroPresBiasUnits)
+    {
+    case StdevBaroPresBiasUnits::hPa: // [hPa]
+        sigma_baroPres = _stdev_baroPres;
+        break;
+    }
+
+    double sigma_baroTemp = 0;
+    switch (_StdevBaroTempBiasUnits)
+    {
+    case StdevBaroTempBiasUnits::K: // [K]
+        sigma_baroTemp = _stdev_baroTemp;
+        break;
+    }
+
     LOG_DATA("{}:     sigma_bgd = {} [rad / s]", nameId(), sigma_bgd.transpose());
 
     // ---------------------------------------------- Prediction -------------------------------------------------
@@ -1214,18 +1409,35 @@ void NAV::LooselyCoupledKF::looselyCoupledPrediction(const std::shared_ptr<const
                                      + n_calcTransportRate(lla_position, n_velocity, R_N, R_E);
         LOG_DATA("{}:     n_omega_in = {} [rad/s]", nameId(), n_omega_in.transpose());
 
-        // System Matrix
-        _kalmanFilter.F = n_systemMatrix_F(n_Quat_b, b_acceleration, n_omega_in, n_velocity, lla_position, R_N, R_E, g_0, r_eS_e, _tau_bad, _tau_bgd);
-        LOG_DATA("{}:     F =\n{}", nameId(), _kalmanFilter.F);
-
+        if (_usePrincipelErrorEstimation)
+        {
+            _kalmanFilter.F = n_systemMatrixBaroEst_F(n_Quat_b, b_acceleration, n_omega_in, n_velocity, lla_position, R_N, R_E, g_0, r_eS_e, _tau_bad, _tau_bgd, _tau_baroPres, _tau_baroTemp);
+        }
+        else
+        {
+            // System Matrix
+            _kalmanFilter.F = n_systemMatrix_F(n_Quat_b, b_acceleration, n_omega_in, n_velocity, lla_position, R_N, R_E, g_0, r_eS_e, _tau_bad, _tau_bgd);
+            LOG_DATA("{}:     F =\n{}", nameId(), _kalmanFilter.F);
+        }
         if (_qCalculationAlgorithm == QCalculationAlgorithm::Taylor1)
         {
-            // 2. Calculate the system noise covariance matrix Q_{k-1}
-            _kalmanFilter.Q = n_systemNoiseCovarianceMatrix_Q(sigma_ra.array().square(), sigma_rg.array().square(),
-                                                              sigma_bad.array().square(), sigma_bgd.array().square(),
-                                                              _tau_bad, _tau_bgd,
-                                                              _kalmanFilter.F.block<3>(Vel, Att), T_rn_p,
-                                                              n_Quat_b.toRotationMatrix(), tau_i);
+            if (_usePrincipelErrorEstimation)
+            {
+                _kalmanFilter.Q = n_systemNoiseCovarianceMatrixBaroEst_Q(sigma_ra.array().square(), sigma_rg.array().square(),
+                                                                         sigma_bad.array().square(), sigma_bgd.array().square(),
+                                                                         _tau_bad, _tau_bgd,
+                                                                         _kalmanFilter.F.block<3>(Vel, Att), T_rn_p,
+                                                                         n_Quat_b.toRotationMatrix(), tau_i, sigma_baroPres, sigma_baroTemp, _tau_baroPres, _tau_baroTemp);
+            }
+            else
+            {
+                // 2. Calculate the system noise covariance matrix Q_{k-1}
+                _kalmanFilter.Q = n_systemNoiseCovarianceMatrix_Q(sigma_ra.array().square(), sigma_rg.array().square(),
+                                                                  sigma_bad.array().square(), sigma_bgd.array().square(),
+                                                                  _tau_bad, _tau_bgd,
+                                                                  _kalmanFilter.F.block<3>(Vel, Att), T_rn_p,
+                                                                  n_Quat_b.toRotationMatrix(), tau_i);
+            }
         }
     }
     else // if (_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::ECEF)
@@ -1257,19 +1469,33 @@ void NAV::LooselyCoupledKF::looselyCoupledPrediction(const std::shared_ptr<const
 
     if (_qCalculationAlgorithm == QCalculationAlgorithm::VanLoan)
     {
-        // Noise Input Matrix
-        _kalmanFilter.G = noiseInputMatrix_G(_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED
-                                                 ? inertialNavSol->n_Quat_b()
-                                                 : inertialNavSol->e_Quat_b());
-        LOG_DATA("{}:     G =\n{}", nameId(), _kalmanFilter.G);
+        if (_usePrincipelErrorEstimation)
+        {
+            _kalmanFilter.G = noiseInputMatrixBaroEst_G(_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED
+                                                            ? inertialNavSol->n_Quat_b()
+                                                            : inertialNavSol->e_Quat_b());
 
-        _kalmanFilter.W(all, all) = noiseScaleMatrix_W(sigma_ra, sigma_rg,
-                                                       sigma_bad, sigma_bgd,
-                                                       _tau_bad, _tau_bgd);
-        LOG_DATA("{}:     W =\n{}", nameId(), _kalmanFilter.W(all, all));
+            _kalmanFilter.W(all, all) = noiseScaleMatrixBaroEst_W(sigma_ra, sigma_rg,
+                                                                  sigma_bad, sigma_bgd,
+                                                                  _tau_bad, _tau_bgd,
+                                                                  sigma_baroPres, sigma_baroTemp,
+                                                                  _tau_baroPres, _tau_baroTemp);
+        }
+        else
+        {
+            // Noise Input Matrix
+            _kalmanFilter.G = noiseInputMatrix_G(_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED
+                                                     ? inertialNavSol->n_Quat_b()
+                                                     : inertialNavSol->e_Quat_b());
+            LOG_DATA("{}:     G =\n{}", nameId(), _kalmanFilter.G);
 
-        LOG_DATA("{}:     G*W*G^T =\n{}", nameId(), _kalmanFilter.G(all, all) * _kalmanFilter.W(all, all) * _kalmanFilter.G(all, all).transpose());
+            _kalmanFilter.W(all, all) = noiseScaleMatrix_W(sigma_ra, sigma_rg,
+                                                           sigma_bad, sigma_bgd,
+                                                           _tau_bad, _tau_bgd);
+            LOG_DATA("{}:     W =\n{}", nameId(), _kalmanFilter.W(all, all));
 
+            LOG_DATA("{}:     G*W*G^T =\n{}", nameId(), _kalmanFilter.G(all, all) * _kalmanFilter.W(all, all) * _kalmanFilter.G(all, all).transpose());
+        }
         // 1. Calculate the transition matrix 𝚽_{k-1}
         // 2. Calculate the system noise covariance matrix Q_{k-1}
         _kalmanFilter.calcPhiAndQWithVanLoanMethod(tau_i);
@@ -1431,9 +1657,15 @@ void NAV::LooselyCoupledKF::looselyCoupledUpdate(const std::shared_ptr<const Pos
         Eigen::Matrix3d n_Omega_ie = math::skewSymmetricMatrix(latestInertialNavSol.n_Quat_e() * InsConst<>::e_omega_ie);
         LOG_DATA("{}:     n_Omega_ie =\n{}", nameId(), n_Omega_ie);
 
-        // 5. Calculate the measurement matrix H_k
-        _kalmanFilter.H = n_measurementMatrix_H(T_rn_p, n_Dcm_b, b_omega_ip, _b_leverArm_InsGnss, n_Omega_ie);
-
+        if (_usePrincipelErrorEstimation && _useBarometer)
+        {
+            _kalmanFilter.H = n_measurementMatrixBaroEst_H(T_rn_p, n_Dcm_b, b_omega_ip, _b_leverArm_InsGnss, n_Omega_ie);
+        }
+        else
+        {
+            // 5. Calculate the measurement matrix H_k
+            _kalmanFilter.H = n_measurementMatrix_H(T_rn_p, n_Dcm_b, b_omega_ip, _b_leverArm_InsGnss, n_Omega_ie);
+        }
         // 6. Calculate the measurement noise covariance matrix R_k
         _kalmanFilter.R = n_measurementNoiseCovariance_R(gnssSigmaSquaredLatLonAlt, gnssSigmaSquaredVelocity);
 
@@ -1559,6 +1791,7 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
     double baroSigmaSquared = 0;
     const Eigen::Vector3d& lla_position = latestInertialNavSol.lla_position();
     const Eigen::Vector3d& e_position = latestInertialNavSol.e_position();
+    double height = lla_position(2);
     switch (_baroMeasurementUncertaintyUnit)
     {
     case BaroMeasurementUncertaintyUnit::m:
@@ -1571,10 +1804,20 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
 
     if (_inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED)
     {
-        _kalmanFilter.setMeasurements(MeasBaro);
-        _kalmanFilter.H = n_baroMeasurementMatrix_H();
-        _kalmanFilter.R = baroMeasurementNoiseCovariance_R(baroSigmaSquared);
-        _kalmanFilter.z = n_baroMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position);
+        if (_usePrincipelErrorEstimation)
+        {
+            _kalmanFilter.setMeasurements(MeasBaro);
+            _kalmanFilter.H = n_baroEstMeasurementMatrix_H(height, _kalmanFilter.x(DeltaP), _kalmanFilter.x(DeltaT));
+            _kalmanFilter.R = baroMeasurementNoiseCovariance_R(baroSigmaSquared);
+            _kalmanFilter.z = n_baroEstMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position, _kalmanFilter.x(DeltaP), _kalmanFilter.x(DeltaT));
+        }
+        else
+        {
+            _kalmanFilter.setMeasurements(MeasBaro);
+            _kalmanFilter.H = n_baroMeasurementMatrix_H();
+            _kalmanFilter.R = baroMeasurementNoiseCovariance_R(baroSigmaSquared);
+            _kalmanFilter.z = n_baroMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position);
+        }
     }
     else // InertialIntegrator::IntegrationFrame::ECEF #TODO
     {
@@ -1636,6 +1879,12 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
     lckfSolution->positionError = _kalmanFilter.x.segment<3>(Pos);
     lckfSolution->velocityError = _kalmanFilter.x.segment<3>(Vel);
     lckfSolution->attitudeError = _kalmanFilter.x.segment<3>(Att) * (1. / SCALE_FACTOR_ATTITUDE);
+
+    if (_usePrincipelErrorEstimation)
+    {
+        lckfSolution->DeltaP = _kalmanFilter.x(DeltaP);
+        lckfSolution->DeltaT = _kalmanFilter.x(DeltaT);
+    }
 
     _inertialIntegrator.applySensorBiasesIncrements(_lastImuObs->imuPos.p_quatAccel_b() * -_kalmanFilter.x.segment<3>(AccBias) * (1. / SCALE_FACTOR_ACCELERATION),
                                                     _lastImuObs->imuPos.p_quatGyro_b() * -_kalmanFilter.x.segment<3>(GyrBias) * (1. / SCALE_FACTOR_ANGULAR_RATE));
@@ -1703,6 +1952,76 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF:
     {
         F.block<3>(AccBias, AccBias) = n_F_df_df(_randomProcessAccel == RandomProcess::RandomWalk ? Eigen::Vector3d::Zero() : beta_bad);
         F.block<3>(GyrBias, GyrBias) = n_F_dw_dw(_randomProcessGyro == RandomProcess::RandomWalk ? Eigen::Vector3d::Zero() : beta_bgd);
+    }
+
+    F.middleRows<3>(Att) *= SCALE_FACTOR_ATTITUDE; // 𝜓' [deg / s] = 180/π * ... [rad / s]
+    F.middleCols<3>(Att) *= 1. / SCALE_FACTOR_ATTITUDE;
+
+    // F.middleRows<3>(Vel) *= 1.; // 𝛿v' [m / s^2] = 1 * [m / s^2]
+    // F.middleCols<3>(Vel) *= 1. / 1.;
+
+    F.middleRows<2>({ PosLat, PosLon }) *= SCALE_FACTOR_LAT_LON; // 𝛿ϕ' [pseudometre / s] = R0 * [rad / s]
+    F.middleCols<2>({ PosLat, PosLon }) *= 1. / SCALE_FACTOR_LAT_LON;
+    // F.row(PosAlt) *= 1.; // 𝛿h' [m / s] = 1 * [m / s]
+    // F.col(PosAlt) *= 1. / 1.;
+
+    F.middleRows<3>(AccBias) *= SCALE_FACTOR_ACCELERATION; // 𝛿f' [mg / s] = 1e3 / g * [m / s^3]
+    F.middleCols<3>(AccBias) *= 1. / SCALE_FACTOR_ACCELERATION;
+
+    F.middleRows<3>(GyrBias) *= SCALE_FACTOR_ANGULAR_RATE; // 𝛿ω' [mrad / s^2] = 1e3 * [rad / s^2]
+    F.middleCols<3>(GyrBias) *= 1. / SCALE_FACTOR_ANGULAR_RATE;
+
+    return F;
+}
+
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF::KFStates, 17, 17>
+    NAV::LooselyCoupledKF::n_systemMatrixBaroEst_F(const Eigen::Quaterniond& n_Quat_b,
+                                                   const Eigen::Vector3d& b_specForce_ib,
+                                                   const Eigen::Vector3d& n_omega_in,
+                                                   const Eigen::Vector3d& n_velocity,
+                                                   const Eigen::Vector3d& lla_position,
+                                                   double R_N,
+                                                   double R_E,
+                                                   double g_0,
+                                                   double r_eS_e,
+                                                   const Eigen::Vector3d& tau_bad,
+                                                   const Eigen::Vector3d& tau_bgd,
+                                                   double tau_baroP,
+                                                   double tau_baroT) const
+{
+    double latitude = lla_position(0); // Geodetic latitude of the body in [rad]
+    double altitude = lla_position(2); // Geodetic height of the body in [m]
+
+    Eigen::Vector3d beta_bad = 1. / tau_bad.array(); // Gauss-Markov constant for the accelerometer 𝛽 = 1 / 𝜏 (𝜏 correlation length)
+    Eigen::Vector3d beta_bgd = 1. / tau_bgd.array(); // Gauss-Markov constant for the gyroscope 𝛽 = 1 / 𝜏 (𝜏 correlation length)
+    double beta_baroP = 1 / tau_baroP;
+    double beta_baroT = 1 / tau_baroT;
+
+    // System matrix 𝐅
+    // Math: \mathbf{F}^n = \begin{pmatrix} \mathbf{F}_{\dot{\psi},\psi}^n & \mathbf{F}_{\dot{\psi},\delta v}^n & \mathbf{F}_{\dot{\psi},\delta r}^n & \mathbf{0}_3 & \mathbf{C}_b^n \\ \mathbf{F}_{\delta \dot{v},\psi}^n & \mathbf{F}_{\delta \dot{v},\delta v}^n & \mathbf{F}_{\delta \dot{v},\delta r}^n & \mathbf{C}_b^n & \mathbf{0}_3 \\ \mathbf{0}_3 & \mathbf{F}_{\delta \dot{r},\delta v}^n & \mathbf{F}_{\delta \dot{r},\delta r}^n & \mathbf{0}_3 & \mathbf{0}_3 \\ \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 \vee -\mathbf{\beta} & \mathbf{0}_3 \\ \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 \vee -\mathbf{\beta} \end{pmatrix}
+    KeyedMatrix<double, KFStates, KFStates, 17, 17> F(Eigen::Matrix<double, 17, 17>::Zero(), BaroErrorStates);
+
+    F.block<3>(Att, Att) = n_F_dpsi_dpsi(n_omega_in);
+    F.block<3>(Att, Vel) = n_F_dpsi_dv(latitude, altitude, R_N, R_E);
+    F.block<3>(Att, Pos) = n_F_dpsi_dr(latitude, altitude, n_velocity, R_N, R_E);
+    F.block<3>(Att, GyrBias) = n_F_dpsi_dw(n_Quat_b.toRotationMatrix());
+    F.block<3>(Vel, Att) = n_F_dv_dpsi(n_Quat_b * b_specForce_ib);
+    F.block<3>(Vel, Vel) = n_F_dv_dv(n_velocity, latitude, altitude, R_N, R_E);
+    F.block<3>(Vel, Pos) = n_F_dv_dr(n_velocity, latitude, altitude, R_N, R_E, g_0, r_eS_e);
+    F.block<3>(Vel, AccBias) = n_F_dv_df(n_Quat_b.toRotationMatrix());
+    F.block<3>(Pos, Vel) = n_F_dr_dv(latitude, altitude, R_N, R_E);
+    F.block<3>(Pos, Pos) = n_F_dr_dr(n_velocity, latitude, altitude, R_N, R_E);
+    if (_qCalculationAlgorithm == QCalculationAlgorithm::VanLoan)
+    {
+        F.block<3>(AccBias, AccBias) = n_F_df_df(_randomProcessAccel == RandomProcess::RandomWalk ? Eigen::Vector3d::Zero() : beta_bad);
+        F.block<3>(GyrBias, GyrBias) = n_F_dw_dw(_randomProcessGyro == RandomProcess::RandomWalk ? Eigen::Vector3d::Zero() : beta_bgd);
+        if (_randomProcessBaro == RandomProcess::RandomWalk)
+        {
+            F(DeltaP, DeltaP) = 0;
+            F(DeltaT, DeltaT) = 0;
+        }
+        F(DeltaP, DeltaP) = -beta_baroP;
+        F(DeltaT, DeltaT) = -beta_baroT;
     }
 
     F.middleRows<3>(Att) *= SCALE_FACTOR_ATTITUDE; // 𝜓' [deg / s] = 180/π * ... [rad / s]
@@ -1795,6 +2114,25 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF:
     return G;
 }
 
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF::KFStates, 17, 17>
+    NAV::LooselyCoupledKF::noiseInputMatrixBaroEst_G(const Eigen::Quaterniond& ien_Quat_b)
+{
+    // DCM matrix from body to navigation frame
+    Eigen::Matrix3d ien_Dcm_b = ien_Quat_b.toRotationMatrix();
+
+    // Math: \mathbf{G}_{a} = \begin{bmatrix} -\mathbf{C}_b^{i,e,n} & 0 & 0 & 0 \\ 0 & \mathbf{C}_b^{i,e,n} & 0 & 0 \\ 0 & 0 & 0 & 0 \\ 0 & 0 & \mathbf{I}_3 & 0 \\ 0 & 0 & 0 & \mathbf{I}_3 \end{bmatrix}
+    KeyedMatrix<double, KFStates, KFStates, 17, 17> G(Eigen::Matrix<double, 17, 17>::Zero(), BaroErrorStates, BaroErrorStates);
+
+    G.block<3>(Att, Att) = SCALE_FACTOR_ATTITUDE * ien_Dcm_b;
+    G.block<3>(Vel, Vel) = ien_Dcm_b;
+    G.block<3>(AccBias, AccBias) = SCALE_FACTOR_ACCELERATION * Eigen::Matrix3d::Identity();
+    G.block<3>(GyrBias, GyrBias) = SCALE_FACTOR_ANGULAR_RATE * Eigen::Matrix3d::Identity();
+    G(DeltaP, DeltaP) = 1;
+    G(DeltaT, DeltaT) = 1;
+
+    return G;
+}
+
 Eigen::Matrix<double, 15, 15> NAV::LooselyCoupledKF::noiseScaleMatrix_W(const Eigen::Vector3d& sigma_ra, const Eigen::Vector3d& sigma_rg,
                                                                         const Eigen::Vector3d& sigma_bad, const Eigen::Vector3d& sigma_bgd,
                                                                         const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd)
@@ -1806,6 +2144,24 @@ Eigen::Matrix<double, 15, 15> NAV::LooselyCoupledKF::noiseScaleMatrix_W(const Ei
         Eigen::Vector3d::Zero(),
         (_randomProcessAccel == RandomProcess::RandomWalk ? sigma_bad : psdBiasGaussMarkov(sigma_bad.array().square(), tau_bad)).array().square(), // S_bad
         (_randomProcessGyro == RandomProcess::RandomWalk ? sigma_bgd : psdBiasGaussMarkov(sigma_bgd.array().square(), tau_bgd)).array().square();  // S_bgd
+
+    return W;
+}
+
+Eigen::Matrix<double, 17, 17> NAV::LooselyCoupledKF::noiseScaleMatrixBaroEst_W(const Eigen::Vector3d& sigma_ra, const Eigen::Vector3d& sigma_rg,
+                                                                               const Eigen::Vector3d& sigma_bad, const Eigen::Vector3d& sigma_bgd,
+                                                                               const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd,
+                                                                               double& sigma_baroP, double& sigma_baroT, double& tau_baroP, double& tau_baroT)
+{
+    Eigen::Matrix<double, 17, 17> W = Eigen::Matrix<double, 17, 17>::Zero();
+
+    W.diagonal() << sigma_rg.array().square(),
+        sigma_ra.array().square(),
+        Eigen::Vector3d::Zero(),
+        (_randomProcessAccel == RandomProcess::RandomWalk ? sigma_bad : psdBiasGaussMarkov(sigma_bad.array().square(), tau_bad)).array().square(), // S_bad
+        (_randomProcessGyro == RandomProcess::RandomWalk ? sigma_bgd : psdBiasGaussMarkov(sigma_bgd.array().square(), tau_bgd)).array().square(),  // S_bgd
+        (_randomProcessBaro == RandomProcess::RandomWalk ? sigma_baroP : std::sqrt(std::sqrt(2 * std::sqrt(sigma_baroP) / tau_baroP))),
+        (_randomProcessBaro == RandomProcess::RandomWalk ? sigma_baroT : std::sqrt(std::sqrt(2 * std::sqrt(sigma_baroT) / tau_baroT)));
 
     return W;
 }
@@ -1848,6 +2204,63 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF:
     Q.block<3>(GyrBias, Pos) = Q.block<3>(Pos, GyrBias).transpose(); // Q_35^T
     Q.block<3>(Vel, AccBias) = Q.block<3>(AccBias, Vel).transpose(); // Q_42^T
     Q.block<3>(Att, GyrBias) = Q.block<3>(GyrBias, Att).transpose(); // Q_51^T
+
+    Q.middleRows<3>(Att) *= SCALE_FACTOR_ATTITUDE;
+    Q.middleRows<2>({ PosLat, PosLon }) *= SCALE_FACTOR_LAT_LON;
+    Q.middleRows<3>(AccBias) *= SCALE_FACTOR_ACCELERATION;
+    Q.middleRows<3>(GyrBias) *= SCALE_FACTOR_ANGULAR_RATE;
+
+    Q.middleCols<3>(Att) *= SCALE_FACTOR_ATTITUDE;
+    Q.middleCols<2>({ PosLat, PosLon }) *= SCALE_FACTOR_LAT_LON;
+    Q.middleCols<3>(AccBias) *= SCALE_FACTOR_ACCELERATION;
+    Q.middleCols<3>(GyrBias) *= SCALE_FACTOR_ANGULAR_RATE;
+
+    return Q;
+}
+
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF::KFStates, 17, 17>
+    NAV::LooselyCoupledKF::n_systemNoiseCovarianceMatrixBaroEst_Q(const Eigen::Vector3d& sigma2_ra, const Eigen::Vector3d& sigma2_rg,
+                                                                  const Eigen::Vector3d& sigma2_bad, const Eigen::Vector3d& sigma2_bgd,
+                                                                  const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd,
+                                                                  const Eigen::Matrix3d& n_F_21, const Eigen::Matrix3d& T_rn_p,
+                                                                  const Eigen::Matrix3d& n_Dcm_b, const double& tau_s, double& sigma2_baroP, double& sigma2_baroT,
+                                                                  double& tau_baroP, double& tau_baroT)
+{
+    // Math: \mathbf{Q}_{INS}^n = \begin{pmatrix} \mathbf{Q}_{11} & {\mathbf{Q}_{21}^n}^T & {\mathbf{Q}_{31}^n}^T & \mathbf{0}_3 & {\mathbf{Q}_{51}^n}^T \\ \mathbf{Q}_{21}^n & \mathbf{Q}_{22}^n & {\mathbf{Q}_{32}^n}^T & {\mathbf{Q}_{42}^n}^T & \mathbf{Q}_{25}^n \\ \mathbf{Q}_{31}^n & \mathbf{Q}_{32}^n & \mathbf{Q}_{33}^n & \mathbf{Q}_{34}^n & \mathbf{Q}_{35}^n \\ \mathbf{0}_3 & \mathbf{Q}_{42}^n & {\mathbf{Q}_{34}^n}^T & S_{bad}\tau_s\mathbf{I}_3 & \mathbf{0}_3 \\ \mathbf{Q}_{51}^n & \mathbf{Q}_{52}^n & {\mathbf{Q}_{35}^n}^T & \mathbf{0}_3 & S_{bgd}\tau_s\mathbf{I}_3 \end{pmatrix} \qquad \text{P. Groves}\,(14.80)
+    Eigen::Vector3d S_ra = sigma2_ra * tau_s;
+    Eigen::Vector3d S_rg = sigma2_rg * tau_s;
+    Eigen::Vector3d S_bad = sigma2_bad.array() / tau_bad.array();
+    Eigen::Vector3d S_bgd = sigma2_bgd.array() / tau_bgd.array();
+    double S_baroP = sigma2_baroP / tau_baroP;
+    double S_baroT = sigma2_baroT / tau_baroT;
+
+    Eigen::Matrix3d b_Dcm_n = n_Dcm_b.transpose();
+
+    KeyedMatrix<double, KFStates, KFStates, 17, 17> Q(Eigen::Matrix<double, 17, 17>::Zero(), BaroErrorStates, BaroErrorStates);
+    Q.block<3>(Att, Att) = Q_psi_psi(S_rg, S_bgd, tau_s);                              // Q_11
+    Q.block<3>(Vel, Att) = ien_Q_dv_psi(S_rg, S_bgd, n_F_21, tau_s);                   // Q_21
+    Q.block<3>(Vel, Vel) = ien_Q_dv_dv(S_ra, S_bad, S_rg, S_bgd, n_F_21, tau_s);       // Q_22
+    Q.block<3>(Vel, GyrBias) = ien_Q_dv_domega(S_bgd, n_F_21, n_Dcm_b, tau_s);         // Q_25
+    Q.block<3>(Pos, Att) = n_Q_dr_psi(S_rg, S_bgd, n_F_21, T_rn_p, tau_s);             // Q_31
+    Q.block<3>(Pos, Vel) = n_Q_dr_dv(S_ra, S_bad, S_rg, S_bgd, n_F_21, T_rn_p, tau_s); // Q_32
+    Q.block<3>(Pos, Pos) = n_Q_dr_dr(S_ra, S_bad, S_rg, S_bgd, n_F_21, T_rn_p, tau_s); // Q_33
+    Q.block<3>(Pos, AccBias) = n_Q_dr_df(S_bgd, T_rn_p, n_Dcm_b, tau_s);               // Q_34
+    Q.block<3>(Pos, GyrBias) = n_Q_dr_domega(S_bgd, n_F_21, T_rn_p, n_Dcm_b, tau_s);   // Q_35
+    Q.block<3>(AccBias, Vel) = Q_df_dv(S_bad, b_Dcm_n, tau_s);                         // Q_42
+    Q.block<3>(AccBias, AccBias) = Q_df_df(S_bad, tau_s);                              // Q_44
+    Q.block<3>(GyrBias, Att) = Q_domega_psi(S_bgd, b_Dcm_n, tau_s);                    // Q_51
+    Q.block<3>(GyrBias, GyrBias) = Q_domega_domega(S_bgd, tau_s);                      // Q_55
+
+    Q.block<3>(Att, Vel) = Q.block<3>(Vel, Att).transpose();         // Q_21^T
+    Q.block<3>(Att, Pos) = Q.block<3>(Pos, Att).transpose();         // Q_31^T
+    Q.block<3>(Vel, Pos) = Q.block<3>(Pos, Vel).transpose();         // Q_32^T
+    Q.block<3>(AccBias, Pos) = Q.block<3>(Pos, AccBias).transpose(); // Q_34^T
+    Q.block<3>(GyrBias, Vel) = Q.block<3>(Vel, GyrBias).transpose(); // Q_25^T
+    Q.block<3>(GyrBias, Pos) = Q.block<3>(Pos, GyrBias).transpose(); // Q_35^T
+    Q.block<3>(Vel, AccBias) = Q.block<3>(AccBias, Vel).transpose(); // Q_42^T
+    Q.block<3>(Att, GyrBias) = Q.block<3>(GyrBias, Att).transpose(); // Q_51^T
+    Q(DeltaP, DeltaP) = S_baroP * tau_s;
+    Q(DeltaT, DeltaT) = S_baroT * tau_s;
 
     Q.middleRows<3>(Att) *= SCALE_FACTOR_ATTITUDE;
     Q.middleRows<2>({ PosLat, PosLon }) *= SCALE_FACTOR_LAT_LON;
@@ -1939,6 +2352,33 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF:
     return { P, States };
 }
 
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF::KFStates, 17, 17>
+    NAV::LooselyCoupledKF::initialErrorCovarianceMatrixBaroEst_P0(const Eigen::Vector3d& variance_angles,
+                                                                  const Eigen::Vector3d& variance_vel,
+                                                                  const Eigen::Vector3d& variance_pos,
+                                                                  const Eigen::Vector3d& variance_accelBias,
+                                                                  const Eigen::Vector3d& variance_gyroBias,
+                                                                  double& variance_DeltaP,
+                                                                  double& variance_DeltaT) const
+{
+    double scaleFactorPosition = _inertialIntegrator.getIntegrationFrame() == InertialIntegrator::IntegrationFrame::NED ? SCALE_FACTOR_LAT_LON : 1.0;
+
+    // 𝐏 Error covariance matrix
+    Eigen::Matrix<double, 17, 17> P = Eigen::Matrix<double, 17, 17>::Zero();
+
+    P.diagonal() << std::pow(SCALE_FACTOR_ATTITUDE, 2) * variance_angles, // Flight Angles covariance
+        variance_vel,                                                     // Velocity covariance
+        std::pow(scaleFactorPosition, 2) * variance_pos(0),               // Latitude/Pos X covariance
+        std::pow(scaleFactorPosition, 2) * variance_pos(1),               // Longitude/Pos Y covariance
+        variance_pos(2),                                                  // Altitude/Pos Z covariance
+        std::pow(SCALE_FACTOR_ACCELERATION, 2) * variance_accelBias,      // Accelerometer Bias covariance
+        std::pow(SCALE_FACTOR_ANGULAR_RATE, 2) * variance_gyroBias,       // Gyroscope Bias covariance
+        variance_DeltaP,
+        variance_DeltaT;
+
+    return { P, BaroErrorStates };
+}
+
 // ###########################################################################################################
 //                                                Correction
 // ###########################################################################################################
@@ -1970,6 +2410,33 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::K
     return H;
 }
 
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 6, 17>
+    NAV::LooselyCoupledKF::n_measurementMatrixBaroEst_H(const Eigen::Matrix3d& T_rn_p, const Eigen::Matrix3d& n_Dcm_b, const Eigen::Vector3d& b_omega_ib, const Eigen::Vector3d& b_leverArm_InsGnss, const Eigen::Matrix3d& n_Omega_ie)
+{
+    // Math: \mathbf{H}_{G,k}^n = \begin{pmatrix} \mathbf{H}_{r1}^n & \mathbf{0}_3 & -\mathbf{I}_3 & \mathbf{0}_3 & \mathbf{0}_3 \\ \mathbf{H}_{v1}^n & -\mathbf{I}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{H}_{v5}^n \end{pmatrix}_k \qquad \text{P. Groves}\,(14.113)
+    // G denotes GNSS indicated
+
+    NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 6, 17> H(Eigen::Matrix<double, 6, 17>::Zero(), Meas, BaroErrorStates);
+
+    // Math: \mathbf{H}_{r1}^n \approx \mathbf{\hat{T}}_{r(n)}^p \begin{bmatrix} \begin{pmatrix} \mathbf{C}_b^n \mathbf{l}_{ba}^p \end{pmatrix} \wedge \end{bmatrix} \qquad \text{P. Groves}\,(14.114)
+    H.block<3>(dPos, Att) = T_rn_p * math::skewSymmetricMatrix(n_Dcm_b * b_leverArm_InsGnss);
+    H.block<3>(dPos, Pos) = -Eigen::Matrix3d::Identity();
+    // Math: \mathbf{H}_{v1}^n \approx \begin{bmatrix} \begin{Bmatrix} \mathbf{C}_b^n (\mathbf{\hat{\omega}}_{ib}^b \wedge \mathbf{l}_{ba}^b) - \mathbf{\hat{\Omega}}_{ie}^n \mathbf{C}_b^n \mathbf{l}_{ba}^b \end{Bmatrix} \wedge \end{bmatrix} \qquad \text{P. Groves}\,(14.114)
+    H.block<3>(dVel, Att) = math::skewSymmetricMatrix(n_Dcm_b * (b_omega_ib.cross(b_leverArm_InsGnss)) - n_Omega_ie * n_Dcm_b * b_leverArm_InsGnss);
+    H.block<3>(dVel, Vel) = -Eigen::Matrix3d::Identity();
+    // Math: \mathbf{H}_{v5}^n = \mathbf{C}_b^n \begin{bmatrix} \mathbf{l}_{ba}^b \wedge \end{bmatrix} \qquad \text{P. Groves}\,(14.114)
+    H.block<3>(dVel, GyrBias) = n_Dcm_b * math::skewSymmetricMatrix(b_leverArm_InsGnss);
+
+    H.middleRows<2>({ dPosLat, dPosLon }) *= SCALE_FACTOR_LAT_LON;
+
+    H.middleCols<3>(Att) *= 1. / SCALE_FACTOR_ATTITUDE;
+    H.middleCols<2>({ PosLat, PosLon }) *= 1. / SCALE_FACTOR_LAT_LON;
+    // H.middleCols<3>(AccBias) *= 1. / SCALE_FACTOR_ACCELERATION; // Only zero elements
+    H.middleCols<3>(GyrBias) *= 1. / SCALE_FACTOR_ANGULAR_RATE;
+
+    return H;
+}
+
 NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 15>
     NAV::LooselyCoupledKF::n_baroMeasurementMatrix_H()
 {
@@ -1978,6 +2445,18 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::K
 
     return H;
 }
+
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 17>
+    NAV::LooselyCoupledKF::n_baroEstMeasurementMatrix_H(double& Altitude, double& _DeltaP, double& _DeltaT)
+{
+    NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 17> H(Eigen::Matrix<double, 1, 17>::Zero(), MeasBaro, BaroErrorStates);
+    H(dAltMsl, PosAlt) = _DeltaT / T0 + (L * R * _DeltaP) / (P0 * g0) + 1;
+    H(dAltMsl, DeltaP) = (R * (T0 + L * Altitude)) / (P0 * g0);
+    H(dAltMsl, DeltaT) = Altitude / T0;
+
+    return H;
+}
+
 //#TODO
 NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 15>
     NAV::LooselyCoupledKF::e_baroMeasurementMatrix_H(const Eigen::Vector3d& lla_positionEstimate)
@@ -2073,6 +2552,19 @@ NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
     // TODO
     double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
     double deltaAlt = baroHeightMeasurement - lla_positionEstimate(2) + geoidHeight;
+
+    Eigen::Matrix<double, 1, 1> innovation;
+    innovation << deltaAlt;
+
+    return { innovation, MeasBaro };
+}
+
+NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
+    NAV::LooselyCoupledKF::n_baroEstMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, double& _DeltaP, double& _DeltaT)
+{
+    // TODO
+    double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
+    double deltaAlt = baroHeightMeasurement - lla_positionEstimate(2) + geoidHeight - (_DeltaT * lla_positionEstimate(2)) / T0 - (R * _DeltaP * (T0 + L * lla_positionEstimate(2))) / (P0 + g0);
 
     Eigen::Matrix<double, 1, 1> innovation;
     innovation << deltaAlt;

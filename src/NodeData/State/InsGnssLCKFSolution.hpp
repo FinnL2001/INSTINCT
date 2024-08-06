@@ -69,11 +69,13 @@ class InsGnssLCKFSolution : public PosVelAtt
         desc.emplace_back("Gyroscope bias b_X [rad/s]");
         desc.emplace_back("Gyroscope bias b_Y [rad/s]");
         desc.emplace_back("Gyroscope bias b_Z [rad/s]");
+        desc.emplace_back("Baro Bias Estimation DeltaP [hPa]");
+        desc.emplace_back("Baro Bias Estimation DeltaT [K]");
         return desc;
     }
 
     /// @brief Get the number of descriptors
-    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 70; }
+    [[nodiscard]] static constexpr size_t GetStaticDescriptorCount() { return 72; }
 
     /// @brief Returns a vector of data descriptors
     [[nodiscard]] std::vector<std::string> staticDataDescriptors() const override { return GetStaticDataDescriptors(); }
@@ -200,6 +202,12 @@ class InsGnssLCKFSolution : public PosVelAtt
             return b_biasGyro(1);
         case 69: // Gyroscope bias b_Z [rad/s]
             return b_biasGyro(2);
+        case 70: // Gyroscope bias b_Z [rad/s]
+            if (DeltaP.has_value()) { return DeltaP.value(); }
+            break;
+        case 71: // Gyroscope bias b_Z [rad/s]
+            if (DeltaT.has_value()) { return DeltaT.value(); }
+            break;
         default:
             return std::nullopt;
         }
@@ -227,6 +235,9 @@ class InsGnssLCKFSolution : public PosVelAtt
     Eigen::Vector3d b_biasAccel{ 0, 0, 0 };
     /// 𝐛_g The gyroscope bias in body frame in [rad/s]
     Eigen::Vector3d b_biasGyro{ 0, 0, 0 };
+
+    std::optional<double> DeltaP;
+    std::optional<double> DeltaT;
 };
 
 } // namespace NAV

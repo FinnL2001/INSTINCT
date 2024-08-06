@@ -80,6 +80,8 @@ class LooselyCoupledKF : public Node
         GyrBiasX, ///< Gyroscope Bias X
         GyrBiasY, ///< Gyroscope Bias Y
         GyrBiasZ, ///< Gyroscope Bias Z
+        DeltaP,   ///< Estimation of difference between real MSL Pressure and ISA const.
+        DeltaT,   ///< Estimation of difference between real MSL Temp and ISA const.
 
         Psi_eb_1 = Roll,  ///< Angle between Earth and Body frame around 1. axis
         Psi_eb_2 = Pitch, ///< Angle between Earth and Body frame around 2. axis
@@ -90,6 +92,7 @@ class LooselyCoupledKF : public Node
         PosX = PosLat,    ///< ECEF Position X
         PosY = PosLon,    ///< ECEF Position Y
         PosZ = PosAlt,    ///< ECEF Position Z
+
     };
 
     /// @brief Measurement Keys of the Kalman filter
@@ -175,6 +178,11 @@ class LooselyCoupledKF : public Node
     /// Pressure at Takeoff [hPa]
     double _Heightstart_Msl = 0;
 
+    /// Delta P am Start
+    double _deltaP_start = 0;
+    /// Delta T am Start
+    double _deltaT_start = 0;
+
     /// Estimate PricipleError
     bool _usePrincipelErrorEstimation = false;
     /// Use calibarationBaro
@@ -203,6 +211,14 @@ class LooselyCoupledKF : public Node
                                                          KFStates::PosLat, KFStates::PosLon, KFStates::PosAlt,
                                                          KFStates::AccBiasX, KFStates::AccBiasY, KFStates::AccBiasZ,
                                                          KFStates::GyrBiasX, KFStates::GyrBiasY, KFStates::GyrBiasZ };
+    /// @brief Vector with all state keys for Baro Principle Error Estimation
+    inline static const std::vector<KFStates> BaroErrorStates = { KFStates::Roll, KFStates::Pitch, KFStates::Yaw,
+                                                                  KFStates::VelN, KFStates::VelE, KFStates::VelD,
+                                                                  KFStates::PosLat, KFStates::PosLon, KFStates::PosAlt,
+                                                                  KFStates::AccBiasX, KFStates::AccBiasY, KFStates::AccBiasZ,
+                                                                  KFStates::GyrBiasX, KFStates::GyrBiasY, KFStates::GyrBiasZ,
+                                                                  KFStates::DeltaP, KFStates::DeltaT };
+
     /// @brief All position keys
     inline static const std::vector<KFStates> Pos = { KFStates::PosLat, KFStates::PosLon, KFStates::PosAlt };
     /// @brief All position velocity
@@ -213,6 +229,8 @@ class LooselyCoupledKF : public Node
     inline static const std::vector<KFStates> AccBias = { KFStates::AccBiasX, KFStates::AccBiasY, KFStates::AccBiasZ };
     /// @brief All gyroscope bias keys
     inline static const std::vector<KFStates> GyrBias = { KFStates::GyrBiasX, KFStates::GyrBiasY, KFStates::GyrBiasZ };
+    /// @brief All baro bias keys
+    inline static const std::vector<KFStates> BaroBias = { KFStates::DeltaP, KFStates::DeltaT };
 
     /// @brief Vector with all measurement keys
     inline static const std::vector<KFMeas> Meas = { KFMeas::dPosLat, KFMeas::dPosLon, KFMeas::dPosAlt, KFMeas::dVelN, KFMeas::dVelE, KFMeas::dVelD };
@@ -291,6 +309,36 @@ class LooselyCoupledKF : public Node
     // ###########################################################################################################
 
     /// Possible Units for the Variance of the accelerometer dynamic bias
+    enum class StdevBaroPresBiasUnits
+    {
+        hPa ///< [hPa]
+    };
+    /// Gui selection for the Unit of the input variance parameter
+    StdevBaroPresBiasUnits _StdevBaroPresBiasUnits = StdevBaroPresBiasUnits::hPa;
+
+    /// @brief 𝜎²_bad Variance of the Barometer Pressure dynamic bias
+    double _stdev_baroPres = 10;
+
+    /// @brief Correlation length of the Barometer Pressure dynamic bias in [s]
+    double _tau_baroPres = 0.1;
+
+    /// Possible Units for the Variance of the accelerometer dynamic bias
+    enum class StdevBaroTempBiasUnits
+    {
+        K ///< [K]
+    };
+    /// Gui selection for the Unit of the input variance parameter
+    StdevBaroTempBiasUnits _StdevBaroTempBiasUnits = StdevBaroTempBiasUnits::K;
+
+    /// @brief 𝜎²_bad Variance of the Barometer Pressure dynamic bias
+    double _stdev_baroTemp = 10;
+
+    /// @brief Correlation length of the Barometer Pressure dynamic bias in [s]
+    double _tau_baroTemp = 0.1;
+
+    // ###########################################################################################################
+
+    /// Possible Units for the Variance of the accelerometer dynamic bias
     enum class StdevGyroBiasUnits
     {
         deg_h, ///< [°/h]
@@ -325,6 +373,8 @@ class LooselyCoupledKF : public Node
     RandomProcess _randomProcessAccel = RandomProcess::RandomWalk;
     /// @brief Random Process used to estimate the gyroscope biases
     RandomProcess _randomProcessGyro = RandomProcess::RandomWalk;
+    /// @brief Random Process used to estimate the Baro Principle Error
+    RandomProcess _randomProcessBaro = RandomProcess::RandomWalk;
 
     // ###########################################################################################################
 
@@ -382,7 +432,7 @@ class LooselyCoupledKF : public Node
     enum class InitCovariancePositionUnit
     {
         rad2_rad2_m2, ///< Variance LatLonAlt^2 [rad^2, rad^2, m^2]
-        rad_rad_m,    ///< Standard deviation LatLonAlt [rad, rad, m]
+        rad_rad_m,    ///< Standard deviation LatLonAlt [rad, rad, m]BaroErrorStates
         meter2,       ///< Variance NED [m^2, m^2, m^2]
         meter,        ///< Standard deviation NED [m, m, m]
     };
@@ -451,6 +501,34 @@ class LooselyCoupledKF : public Node
 
     /// GUI selection of the initial covariance diagonal values for gyroscope biases (standard deviation σ or Variance σ²)
     Eigen::Vector3d _initCovarianceBiasGyro{ 0.5, 0.5, 0.5 };
+
+    // ###########################################################################################################
+
+    /// Possible Units for the initial covariance for the Baro Pressure biases (standard deviation σ or Variance σ²)
+    enum class InitCovarianceBiasBaroPresUnit
+    {
+        hPa2,
+        hPa,
+    };
+    /// Gui selection for the Unit of the initial covariance for the Baro Pressure biases
+    InitCovarianceBiasBaroPresUnit _initCovarianceBiasBaroPresUnit = InitCovarianceBiasBaroPresUnit::hPa2;
+
+    /// GUI selection of the initial covariance diagonal values for Baro Pressure biases (standard deviation σ or Variance σ²)
+    double _initCovarianceBiasBaroPres = 0.001;
+
+    // ###########################################################################################################
+
+    /// Possible Units for the initial covariance for the Baro Pressure biases (standard deviation σ or Variance σ²)
+    enum class InitCovarianceBiasBaroTempUnit
+    {
+        K2,
+        K,
+    };
+    /// Gui selection for the Unit of the initial covariance for the Baro Pressure biases
+    InitCovarianceBiasBaroTempUnit _initCovarianceBiasBaroTempUnit = InitCovarianceBiasBaroTempUnit::K2;
+
+    /// GUI selection of the initial covariance diagonal values for Baro Pressure biases (standard deviation σ or Variance σ²)
+    double _initCovarianceBiasBaroTemp = 0.1;
 
     // ###########################################################################################################
 
@@ -535,6 +613,33 @@ class LooselyCoupledKF : public Node
                                                                                    const Eigen::Vector3d& tau_bad,
                                                                                    const Eigen::Vector3d& tau_bgd) const;
 
+    /// @brief Calculates the system matrix 𝐅 for the local navigation frame
+    /// @param[in] n_Quat_b Attitude of the body with respect to n-system
+    /// @param[in] b_specForce_ib Specific force of the body with respect to inertial frame in [m / s^2], resolved in body coordinates
+    /// @param[in] n_omega_in Angular rate of navigation system with respect to the inertial system [rad / s], resolved in navigation coordinates.
+    /// @param[in] n_velocity Velocity in n-system in [m / s]
+    /// @param[in] lla_position Position as Lat Lon Alt in [rad rad m]
+    /// @param[in] R_N Meridian radius of curvature in [m]
+    /// @param[in] R_E Prime vertical radius of curvature (East/West) [m]
+    /// @param[in] g_0 Magnitude of the gravity vector in [m/s^2] (see \cite Groves2013 Groves, ch. 2.4.7, eq. 2.135, p. 70)
+    /// @param[in] r_eS_e Geocentric radius. The distance of a point on the Earth's surface from the center of the Earth in [m]
+    /// @param[in] tau_bad Correlation length for the accelerometer in [s]
+    /// @param[in] tau_bgd Correlation length for the gyroscope in [s]
+    /// @note See Groves (2013) chapter 14.2.4, equation (14.63)
+    [[nodiscard]] KeyedMatrix<double, KFStates, KFStates, 17, 17> n_systemMatrixBaroEst_F(const Eigen::Quaterniond& n_Quat_b,
+                                                                                          const Eigen::Vector3d& b_specForce_ib,
+                                                                                          const Eigen::Vector3d& n_omega_in,
+                                                                                          const Eigen::Vector3d& n_velocity,
+                                                                                          const Eigen::Vector3d& lla_position,
+                                                                                          double R_N,
+                                                                                          double R_E,
+                                                                                          double g_0,
+                                                                                          double r_eS_e,
+                                                                                          const Eigen::Vector3d& tau_bad,
+                                                                                          const Eigen::Vector3d& tau_bgd,
+                                                                                          double tau_baroP,
+                                                                                          double tau_baroT) const;
+
     /// @brief Calculates the system matrix 𝐅 for the ECEF frame
     /// @param[in] e_Quat_b Attitude of the body with respect to e-system
     /// @param[in] b_specForce_ib Specific force of the body with respect to inertial frame in [m / s^2], resolved in body coordinates
@@ -564,6 +669,11 @@ class LooselyCoupledKF : public Node
     /// @note See \cite Groves2013 Groves, ch. 14.2.6, eq. 14.79, p. 590
     [[nodiscard]] static KeyedMatrix<double, KFStates, KFStates, 15, 15> noiseInputMatrix_G(const Eigen::Quaterniond& ien_Quat_b);
 
+    /// @brief Calculates the noise input matrix 𝐆
+    /// @param[in] ien_Quat_b Quaternion from body frame to {i,e,n} frame
+    /// @note See \cite Groves2013 Groves, ch. 14.2.6, eq. 14.79, p. 590
+    [[nodiscard]] static KeyedMatrix<double, KFStates, KFStates, 17, 17> noiseInputMatrixBaroEst_G(const Eigen::Quaterniond& ien_Quat_b);
+
     /// @brief Calculates the noise scale matrix 𝐖
     /// @param[in] sigma_ra Standard deviation of the noise on the accelerometer specific-force measurements
     /// @param[in] sigma_rg Standard deviation of the noise on the gyro angular-rate measurements
@@ -575,6 +685,19 @@ class LooselyCoupledKF : public Node
     [[nodiscard]] Eigen::Matrix<double, 15, 15> noiseScaleMatrix_W(const Eigen::Vector3d& sigma_ra, const Eigen::Vector3d& sigma_rg,
                                                                    const Eigen::Vector3d& sigma_bad, const Eigen::Vector3d& sigma_bgd,
                                                                    const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd);
+
+    /// @brief Calculates the noise scale matrix 𝐖
+    /// @param[in] sigma_ra Standard deviation of the noise on the accelerometer specific-force measurements
+    /// @param[in] sigma_rg Standard deviation of the noise on the gyro angular-rate measurements
+    /// @param[in] sigma_bad Standard deviation of the accelerometer dynamic bias
+    /// @param[in] sigma_bgd Standard deviation of the gyro dynamic bias
+    /// @param[in] tau_bad Correlation length for the accelerometer in [s]
+    /// @param[in] tau_bgd Correlation length for the gyroscope in [s]
+    /// @note See \cite Groves2013 Groves, ch. 14.2.6, eq. 14.79, p. 590
+    [[nodiscard]] Eigen::Matrix<double, 17, 17> noiseScaleMatrixBaroEst_W(const Eigen::Vector3d& sigma_ra, const Eigen::Vector3d& sigma_rg,
+                                                                          const Eigen::Vector3d& sigma_bad, const Eigen::Vector3d& sigma_bgd,
+                                                                          const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd,
+                                                                          double& sigma_baroP, double& sigma_baroT, double& tau_baroP, double& tau_baroT);
 
     /// @brief System noise covariance matrix 𝐐_{k-1}
     /// @param[in] sigma2_ra Variance of the noise on the accelerometer specific-force measurements
@@ -593,6 +716,25 @@ class LooselyCoupledKF : public Node
                                                                                                          const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd,
                                                                                                          const Eigen::Matrix3d& n_F_21, const Eigen::Matrix3d& T_rn_p,
                                                                                                          const Eigen::Matrix3d& n_Dcm_b, const double& tau_s);
+
+    /// @brief System noise covariance matrix 𝐐_{k-1}
+    /// @param[in] sigma2_ra Variance of the noise on the accelerometer specific-force measurements
+    /// @param[in] sigma2_rg Variance of the noise on the gyro angular-rate measurements
+    /// @param[in] sigma2_bad Variance of the accelerometer dynamic bias
+    /// @param[in] sigma2_bgd Variance of the gyro dynamic bias
+    /// @param[in] tau_bad Correlation length for the accelerometer in [s]
+    /// @param[in] tau_bgd Correlation length for the gyroscope in [s]
+    /// @param[in] n_F_21 Submatrix 𝐅_21 of the system matrix 𝐅
+    /// @param[in] T_rn_p Conversion matrix between cartesian and curvilinear perturbations to the position
+    /// @param[in] n_Dcm_b Direction Cosine Matrix from body to navigation coordinates
+    /// @param[in] tau_s Time interval in [s]
+    /// @return The 15x15 matrix of system noise covariances
+    [[nodiscard]] static KeyedMatrix<double, KFStates, KFStates, 17, 17> n_systemNoiseCovarianceMatrixBaroEst_Q(const Eigen::Vector3d& sigma2_ra, const Eigen::Vector3d& sigma2_rg,
+                                                                                                                const Eigen::Vector3d& sigma2_bad, const Eigen::Vector3d& sigma2_bgd,
+                                                                                                                const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd,
+                                                                                                                const Eigen::Matrix3d& n_F_21, const Eigen::Matrix3d& T_rn_p,
+                                                                                                                const Eigen::Matrix3d& n_Dcm_b, const double& tau_s, double& sigma2_baroP, double& sigma2_baroT,
+                                                                                                                double& tau_baroP, double& tau_baroT);
 
     /// @brief System noise covariance matrix 𝐐_{k-1}
     /// @param[in] sigma2_ra Variance of the noise on the accelerometer specific-force measurements
@@ -628,6 +770,21 @@ class LooselyCoupledKF : public Node
                                                                                                   const Eigen::Vector3d& variance_accelBias,
                                                                                                   const Eigen::Vector3d& variance_gyroBias) const;
 
+    /// @brief Initial error covariance matrix P_0
+    /// @param[in] variance_angles Initial Covariance of the attitude angles in [rad²]
+    /// @param[in] variance_vel Initial Covariance of the velocity in [m²/s²]
+    /// @param[in] variance_pos Initial Covariance of the position in [rad² rad² m²] n-frame / [m²] i,e-frame
+    /// @param[in] variance_accelBias Initial Covariance of the accelerometer biases in [m^2/s^4]
+    /// @param[in] variance_gyroBias Initial Covariance of the gyroscope biases in [rad^2/s^2]
+    /// @return The 15x15 matrix of initial state variances
+    [[nodiscard]] KeyedMatrix<double, KFStates, KFStates, 17, 17> initialErrorCovarianceMatrixBaroEst_P0(const Eigen::Vector3d& variance_angles,
+                                                                                                         const Eigen::Vector3d& variance_vel,
+                                                                                                         const Eigen::Vector3d& variance_pos,
+                                                                                                         const Eigen::Vector3d& variance_accelBias,
+                                                                                                         const Eigen::Vector3d& variance_gyroBias,
+                                                                                                         double& variance_DeltaP,
+                                                                                                         double& variance_DeltaT) const;
+
     // ###########################################################################################################
     //                                                Correction
     // ###########################################################################################################
@@ -645,9 +802,26 @@ class LooselyCoupledKF : public Node
                                                                                             const Eigen::Vector3d& b_leverArm_InsGnss,
                                                                                             const Eigen::Matrix3d& n_Omega_ie);
 
+    /// @brief Measurement matrix for GNSS measurements at timestep k, represented in navigation coordinates
+    /// @param[in] T_rn_p Conversion matrix between cartesian and curvilinear perturbations to the position
+    /// @param[in] n_Dcm_b Direction Cosine Matrix from body to navigation coordinates
+    /// @param[in] b_omega_ib Angular rate of body with respect to inertial system in body-frame coordinates in [rad/s]
+    /// @param[in] b_leverArm_InsGnss l_{ba}^b lever arm from the INS to the GNSS antenna in body-frame coordinates [m]
+    /// @param[in] n_Omega_ie Skew-symmetric matrix of the Earth-rotation vector in local navigation frame axes
+    /// @return The 6x15 measurement matrix 𝐇
+    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 6, 17> n_measurementMatrixBaroEst_H(const Eigen::Matrix3d& T_rn_p,
+                                                                                                   const Eigen::Matrix3d& n_Dcm_b,
+                                                                                                   const Eigen::Vector3d& b_omega_ib,
+                                                                                                   const Eigen::Vector3d& b_leverArm_InsGnss,
+                                                                                                   const Eigen::Matrix3d& n_Omega_ie);
+
     /// @brief Measurement matrix for Baro measurements at timestep k, represented in navigation coordinates
     /// @return The 1x15 measurement matrix 𝐇
     [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 1, 15> n_baroMeasurementMatrix_H();
+
+    /// @brief Measurement matrix for Baro measurements at timestep k, represented in navigation coordinates
+    /// @return The 1x17 measurement matrix 𝐇
+    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 1, 17> n_baroEstMeasurementMatrix_H(double& Altitude, double& DeltaP, double& DeltaT);
 
     /// @brief Measurement matrix for Baro measurements at timestep k, represented in navigation coordinates
     /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
@@ -705,6 +879,12 @@ class LooselyCoupledKF : public Node
     /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
     /// @return The 1x1 measurement innovation vector 𝜹𝐳
     [[nodiscard]] static KeyedVector<double, KFMeas, 1> n_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate);
+
+    /// @brief Measurement innovation vector 𝜹𝐳
+    /// @param[in] baroHeightMeasurement Baro Altitude (Geoid height) Mesurment in [m]
+    /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
+    /// @return The 1x1 measurement innovation vector 𝜹𝐳
+    [[nodiscard]] static KeyedVector<double, KFMeas, 1> n_baroEstMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, double& DeltaP, double& DeltaT);
 
     /// @brief Measurement innovation vector 𝜹𝐳
     /// @param[in] baroHeightMeasurement Baro Altitude (Geoid height) Mesurment in [m]
@@ -774,6 +954,10 @@ struct fmt::formatter<NAV::LooselyCoupledKF::KFStates> : fmt::formatter<const ch
             return fmt::formatter<const char*>::format("GyrBiasY", ctx);
         case NAV::LooselyCoupledKF::KFStates::GyrBiasZ:
             return fmt::formatter<const char*>::format("GyrBiasZ", ctx);
+        case NAV::LooselyCoupledKF::KFStates::DeltaP:
+            return fmt::formatter<const char*>::format("DeltaP", ctx);
+        case NAV::LooselyCoupledKF::KFStates::DeltaT:
+            return fmt::formatter<const char*>::format("DeltaT", ctx);
         }
 
         return fmt::formatter<const char*>::format("ERROR", ctx);
