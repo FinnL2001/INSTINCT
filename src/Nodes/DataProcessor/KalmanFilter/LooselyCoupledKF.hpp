@@ -659,6 +659,27 @@ class LooselyCoupledKF : public Node
                                                                                    const Eigen::Vector3d& tau_bad,
                                                                                    const Eigen::Vector3d& tau_bgd) const;
 
+    /// @brief Calculates the system matrix 𝐅 for the ECEF frame
+    /// @param[in] e_Quat_b Attitude of the body with respect to e-system
+    /// @param[in] b_specForce_ib Specific force of the body with respect to inertial frame in [m / s^2], resolved in body coordinates
+    /// @param[in] e_position Position in ECEF coordinates in [m]
+    /// @param[in] e_gravitation Gravitational acceleration in [m/s^2]
+    /// @param[in] r_eS_e Geocentric radius. The distance of a point on the Earth's surface from the center of the Earth in [m]
+    /// @param[in] e_omega_ie Angular velocity of Earth with respect to inertial system, represented in e-sys in [rad/s]
+    /// @param[in] tau_bad Correlation length for the accelerometer in [s]
+    /// @param[in] tau_bgd Correlation length for the gyroscope in [s]
+    /// @note See Groves (2013) chapter 14.2.3, equation (14.48)
+    [[nodiscard]] KeyedMatrix<double, KFStates, KFStates, 17, 17> e_systemMatrixBaroEst_F(const Eigen::Quaterniond& e_Quat_b,
+                                                                                          const Eigen::Vector3d& b_specForce_ib,
+                                                                                          const Eigen::Vector3d& e_position,
+                                                                                          const Eigen::Vector3d& e_gravitation,
+                                                                                          double r_eS_e,
+                                                                                          const Eigen::Vector3d& e_omega_ie,
+                                                                                          const Eigen::Vector3d& tau_bad,
+                                                                                          const Eigen::Vector3d& tau_bgd,
+                                                                                          double tau_baroP,
+                                                                                          double tau_baroT) const;
+
     // ###########################################################################################################
     //                                    Noise input matrix 𝐆 & Noise scale matrix 𝐖
     //                                     System noise covariance matrix 𝐐
@@ -753,6 +774,24 @@ class LooselyCoupledKF : public Node
                                                                                                          const Eigen::Matrix3d& e_F_21,
                                                                                                          const Eigen::Matrix3d& e_Dcm_b, const double& tau_s);
 
+    /// @brief System noise covariance matrix 𝐐_{k-1}
+    /// @param[in] sigma2_ra Variance of the noise on the accelerometer specific-force measurements
+    /// @param[in] sigma2_rg Variance of the noise on the gyro angular-rate measurements
+    /// @param[in] sigma2_bad Variance of the accelerometer dynamic bias
+    /// @param[in] sigma2_bgd Variance of the gyro dynamic bias
+    /// @param[in] tau_bad Correlation length for the accelerometer in [s]
+    /// @param[in] tau_bgd Correlation length for the gyroscope in [s]
+    /// @param[in] e_F_21 Submatrix 𝐅_21 of the system matrix 𝐅
+    /// @param[in] e_Dcm_b Direction Cosine Matrix from body to Earth coordinates
+    /// @param[in] tau_s Time interval in [s]
+    /// @return The 15x15 matrix of system noise covariances
+    [[nodiscard]] static KeyedMatrix<double, KFStates, KFStates, 17, 17> e_systemNoiseCovarianceMatrixBaroEst_Q(const Eigen::Vector3d& sigma2_ra, const Eigen::Vector3d& sigma2_rg,
+                                                                                                                const Eigen::Vector3d& sigma2_bad, const Eigen::Vector3d& sigma2_bgd,
+                                                                                                                const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd,
+                                                                                                                const Eigen::Matrix3d& e_F_21,
+                                                                                                                const Eigen::Matrix3d& e_Dcm_b, const double& tau_s, double& sigma2_baroP, double& sigma2_baroT,
+                                                                                                                double& tau_baroP, double& tau_baroT);
+
     // ###########################################################################################################
     //                                         Error covariance matrix P
     // ###########################################################################################################
@@ -828,6 +867,15 @@ class LooselyCoupledKF : public Node
     /// @return The 1x15 measurement matrix 𝐇
     [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 1, 15> e_baroMeasurementMatrix_H(const Eigen::Vector3d& lla_positionEstimate);
 
+
+
+     /// @brief Measurement matrix for Baro measurements at timestep k, represented in navigation coordinates
+    /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
+    /// @return The 1x15 measurement matrix 𝐇
+    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 1, 17> e_baroEstMeasurementMatrix_H(const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate, double& _DeltaP, double& _DeltaT);
+
+
+
     /// @brief Measurement matrix for GNSS measurements at timestep k, represented in Earth frame coordinates
     /// @param[in] e_Dcm_b Direction Cosine Matrix from body to Earth coordinates
     /// @param[in] b_omega_ib Angular rate of body with respect to inertial system in body-frame coordinates in [rad/s]
@@ -835,6 +883,17 @@ class LooselyCoupledKF : public Node
     /// @param[in] e_Omega_ie Skew-symmetric matrix of the Earth-rotation vector in Earth frame axes
     /// @return The 6x15 measurement matrix 𝐇
     [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 6, 15> e_measurementMatrix_H(const Eigen::Matrix3d& e_Dcm_b,
+                                                                                            const Eigen::Vector3d& b_omega_ib,
+                                                                                            const Eigen::Vector3d& b_leverArm_InsGnss,
+                                                                                            const Eigen::Matrix3d& e_Omega_ie);
+
+    /// @brief Measurement matrix for GNSS measurements at timestep k, represented in Earth frame coordinates
+    /// @param[in] e_Dcm_b Direction Cosine Matrix from body to Earth coordinates
+    /// @param[in] b_omega_ib Angular rate of body with respect to inertial system in body-frame coordinates in [rad/s]
+    /// @param[in] b_leverArm_InsGnss l_{ba}^b lever arm from the INS to the GNSS antenna in body-frame coordinates [m]
+    /// @param[in] e_Omega_ie Skew-symmetric matrix of the Earth-rotation vector in Earth frame axes
+    /// @return The 6x15 measurement matrix 𝐇
+    [[nodiscard]] static KeyedMatrix<double, KFMeas, KFStates, 6, 17> e_measurementMatrixBaroEst_H(const Eigen::Matrix3d& e_Dcm_b,
                                                                                             const Eigen::Vector3d& b_omega_ib,
                                                                                             const Eigen::Vector3d& b_leverArm_InsGnss,
                                                                                             const Eigen::Matrix3d& e_Omega_ie);
@@ -891,6 +950,14 @@ class LooselyCoupledKF : public Node
     /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
     /// @return The 1x1 measurement innovation vector 𝜹𝐳
     [[nodiscard]] static KeyedVector<double, KFMeas, 1> e_baroMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate);
+
+
+    /// @brief Measurement innovation vector 𝜹𝐳
+    /// @param[in] baroHeightMeasurement Baro Altitude (Geoid height) Mesurment in [m]
+    /// @param[in] lla_positionEstimate Position estimate as Lat Lon Alt in [rad rad m]
+    /// @return The 1x1 measurement innovation vector 𝜹𝐳
+    [[nodiscard]] static KeyedVector<double, KFMeas, 1> e_baroEstMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate, double& DeltaP, double& DeltaT);
+
 
     /// @brief Measurement innovation vector 𝜹𝐳
     /// @param[in] e_positionMeasurement Position measurement in ECEF coordinates in [m]

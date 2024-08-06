@@ -1451,19 +1451,35 @@ void NAV::LooselyCoupledKF::looselyCoupledPrediction(const std::shared_ptr<const
 
         // Gravitation in [m/s^2] in ECEF coordinates
         Eigen::Vector3d e_gravitation = trafo::e_Quat_n(lla_position(0), lla_position(1)) * n_calcGravitation_EGM96(lla_position);
-
-        // System Matrix
-        _kalmanFilter.F = e_systemMatrix_F(e_Quat_b, b_acceleration, e_position, e_gravitation, r_eS_e, InsConst<>::e_omega_ie, _tau_bad, _tau_bgd);
-        LOG_DATA("{}:     F =\n{}", nameId(), _kalmanFilter.F);
-
+        if (_usePrincipelErrorEstimation)
+        {
+            _kalmanFilter.F = e_systemMatrixBaroEst_F(e_Quat_b, b_acceleration, e_position, e_gravitation, r_eS_e, InsConst<>::e_omega_ie, _tau_bad, _tau_bgd, _tau_baroPres, _tau_baroTemp);
+        }
+        else
+        {
+            // System Matrix
+            _kalmanFilter.F = e_systemMatrix_F(e_Quat_b, b_acceleration, e_position, e_gravitation, r_eS_e, InsConst<>::e_omega_ie, _tau_bad, _tau_bgd);
+            LOG_DATA("{}:     F =\n{}", nameId(), _kalmanFilter.F);
+        }
         if (_qCalculationAlgorithm == QCalculationAlgorithm::Taylor1)
         {
-            // 2. Calculate the system noise covariance matrix Q_{k-1}
-            _kalmanFilter.Q = e_systemNoiseCovarianceMatrix_Q(sigma_ra.array().square(), sigma_rg.array().square(),
-                                                              sigma_bad.array().square(), sigma_bgd.array().square(),
-                                                              _tau_bad, _tau_bgd,
-                                                              _kalmanFilter.F.block<3>(Vel, Att),
-                                                              e_Quat_b.toRotationMatrix(), tau_i);
+            if (_usePrincipelErrorEstimation)
+            {
+                _kalmanFilter.Q = e_systemNoiseCovarianceMatrixBaroEst_Q(sigma_ra.array().square(), sigma_rg.array().square(),
+                                                                         sigma_bad.array().square(), sigma_bgd.array().square(),
+                                                                         _tau_bad, _tau_bgd,
+                                                                         _kalmanFilter.F.block<3>(Vel, Att),
+                                                                         e_Quat_b.toRotationMatrix(), tau_i, sigma_baroPres, sigma_baroTemp, _tau_baroPres, _tau_baroTemp);
+            }
+            else
+            {
+                // 2. Calculate the system noise covariance matrix Q_{k-1}
+                _kalmanFilter.Q = e_systemNoiseCovarianceMatrix_Q(sigma_ra.array().square(), sigma_rg.array().square(),
+                                                                  sigma_bad.array().square(), sigma_bgd.array().square(),
+                                                                  _tau_bad, _tau_bgd,
+                                                                  _kalmanFilter.F.block<3>(Vel, Att),
+                                                                  e_Quat_b.toRotationMatrix(), tau_i);
+            }
         }
     }
 
@@ -1683,10 +1699,15 @@ void NAV::LooselyCoupledKF::looselyCoupledUpdate(const std::shared_ptr<const Pos
         // Skew-symmetric matrix of the Earth-rotation vector in local navigation frame axes
         Eigen::Matrix3d e_Omega_ie = math::skewSymmetricMatrix(InsConst<>::e_omega_ie);
         LOG_DATA("{}:     e_Omega_ie =\n{}", nameId(), e_Omega_ie);
-
-        // 5. Calculate the measurement matrix H_k
-        _kalmanFilter.H = e_measurementMatrix_H(e_Dcm_b, b_omega_ip, _b_leverArm_InsGnss, e_Omega_ie);
-
+        if (_usePrincipelErrorEstimation && _useBarometer)
+        {
+            _kalmanFilter.H = e_measurementMatrixBaroEst_H(e_Dcm_b, b_omega_ip, _b_leverArm_InsGnss, e_Omega_ie);
+        }
+        else
+        {
+            // 5. Calculate the measurement matrix H_k
+            _kalmanFilter.H = e_measurementMatrix_H(e_Dcm_b, b_omega_ip, _b_leverArm_InsGnss, e_Omega_ie);
+        }
         // 6. Calculate the measurement noise covariance matrix R_k
         _kalmanFilter.R = e_measurementNoiseCovariance_R(gnssSigmaSquaredPosition, gnssSigmaSquaredVelocity);
 
@@ -1821,10 +1842,20 @@ void NAV::LooselyCoupledKF::looselyCoupledBaroUpdate()
     }
     else // InertialIntegrator::IntegrationFrame::ECEF #TODO
     {
-        _kalmanFilter.setMeasurements(MeasBaro);
-        _kalmanFilter.H = e_baroMeasurementMatrix_H(lla_position);
-        _kalmanFilter.R = baroMeasurementNoiseCovariance_R(baroSigmaSquared);
-        _kalmanFilter.z = e_baroMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position, e_position);
+        if (_usePrincipelErrorEstimation)
+        {
+            _kalmanFilter.setMeasurements(MeasBaro);
+            _kalmanFilter.H = e_baroEstMeasurementMatrix_H(lla_position, e_position, _kalmanFilter.x(DeltaP), _kalmanFilter.x(DeltaT));
+            _kalmanFilter.R = baroMeasurementNoiseCovariance_R(baroSigmaSquared);
+            _kalmanFilter.z = e_baroEstMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position, e_position, _kalmanFilter.x(DeltaP), _kalmanFilter.x(DeltaT));
+        }
+        else
+        {
+            _kalmanFilter.setMeasurements(MeasBaro);
+            _kalmanFilter.H = e_baroMeasurementMatrix_H(lla_position);
+            _kalmanFilter.R = baroMeasurementNoiseCovariance_R(baroSigmaSquared);
+            _kalmanFilter.z = e_baroMeasurementInnovation_dz(_lastImuObs->getValueAt(12).value(), lla_position, e_position);
+        }
     }
 
     if (_checkKalmanMatricesRanks)
@@ -2092,6 +2123,66 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF:
     return F;
 }
 
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF::KFStates, 17, 17>
+    NAV::LooselyCoupledKF::e_systemMatrixBaroEst_F(const Eigen::Quaterniond& e_Quat_b,
+                                                   const Eigen::Vector3d& b_specForce_ib,
+                                                   const Eigen::Vector3d& e_position,
+                                                   const Eigen::Vector3d& e_gravitation,
+                                                   double r_eS_e,
+                                                   const Eigen::Vector3d& e_omega_ie,
+                                                   const Eigen::Vector3d& tau_bad,
+                                                   const Eigen::Vector3d& tau_bgd,
+                                                   double tau_baroP,
+                                                   double tau_baroT) const
+{
+    Eigen::Vector3d beta_bad = 1. / tau_bad.array(); // Gauss-Markov constant for the accelerometer 𝛽 = 1 / 𝜏 (𝜏 correlation length)
+    Eigen::Vector3d beta_bgd = 1. / tau_bgd.array(); // Gauss-Markov constant for the gyroscope 𝛽 = 1 / 𝜏 (𝜏 correlation length)
+
+    double beta_baroP = 1 / tau_baroP;
+    double beta_baroT = 1 / tau_baroT;
+
+    // System matrix 𝐅
+    // Math: \mathbf{F}^e = \begin{pmatrix} \mathbf{F}_{\dot{\psi},\psi}^n & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{C}_b^e \\ \mathbf{F}_{\delta \dot{v},\psi}^n & \mathbf{F}_{\delta \dot{v},\delta v}^n & \mathbf{F}_{\delta \dot{v},\delta r}^n & \mathbf{C}_b^e & \mathbf{0}_3 \\ \mathbf{0}_3 & \mathbf{F}_{\delta \dot{r},\delta v}^n & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 \\ \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 \vee -\mathbf{\beta} & \mathbf{0}_3 \\ \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{0}_3 \vee -\mathbf{\beta} \end{pmatrix}
+    KeyedMatrix<double, KFStates, KFStates, 17, 17> F(Eigen::Matrix<double, 17, 17>::Zero(), BaroErrorStates);
+
+    F.block<3>(Att, Att) = e_F_dpsi_dpsi(e_omega_ie.z());
+    F.block<3>(Att, GyrBias) = e_F_dpsi_dw(e_Quat_b.toRotationMatrix());
+    F.block<3>(Vel, Att) = e_F_dv_dpsi(e_Quat_b * b_specForce_ib);
+    F.block<3>(Vel, Vel) = e_F_dv_dv(e_omega_ie.z());
+    F.block<3>(Vel, Pos) = e_F_dv_dr(e_position, e_gravitation, r_eS_e, e_omega_ie);
+    F.block<3>(Vel, AccBias) = e_F_dv_df(e_Quat_b.toRotationMatrix());
+    F.block<3>(Pos, Vel) = e_F_dr_dv();
+    if (_qCalculationAlgorithm == QCalculationAlgorithm::VanLoan)
+    {
+        F.block<3>(AccBias, AccBias) = e_F_df_df(_randomProcessAccel == RandomProcess::RandomWalk ? Eigen::Vector3d::Zero() : beta_bad);
+        F.block<3>(GyrBias, GyrBias) = e_F_dw_dw(_randomProcessGyro == RandomProcess::RandomWalk ? Eigen::Vector3d::Zero() : beta_bgd);
+        if (_randomProcessBaro == RandomProcess::RandomWalk)
+        {
+            F(DeltaP, DeltaP) = 0;
+            F(DeltaT, DeltaT) = 0;
+        }
+        F(DeltaP, DeltaP) = -beta_baroP;
+        F(DeltaT, DeltaT) = -beta_baroT;
+    }
+
+    F.middleRows<3>(Att) *= SCALE_FACTOR_ATTITUDE; // 𝜓' [deg / s] = 180/π * ... [rad / s]
+    F.middleCols<3>(Att) *= 1. / SCALE_FACTOR_ATTITUDE;
+
+    // F.middleRows<3>(Vel) *= 1.; // 𝛿v' [m / s^2] = 1 * [m / s^2]
+    // F.middleCols<3>(Vel) *= 1. / 1.;
+
+    // F.middleRows<3>(Pos) *= 1.; // 𝛿r' [m / s] = 1 * [m / s]
+    // F.middleCols<3>(Pos) *= 1. / 1.;
+
+    F.middleRows<3>(AccBias) *= SCALE_FACTOR_ACCELERATION; // 𝛿f' [mg / s] = 1e3 / g * [m / s^3]
+    F.middleCols<3>(AccBias) *= 1. / SCALE_FACTOR_ACCELERATION;
+
+    F.middleRows<3>(GyrBias) *= SCALE_FACTOR_ANGULAR_RATE; // 𝛿ω' [mrad / s^2] = 1e3 * [rad / s^2]
+    F.middleCols<3>(GyrBias) *= 1. / SCALE_FACTOR_ANGULAR_RATE;
+
+    return F;
+}
+
 // ###########################################################################################################
 //                                    Noise input matrix 𝐆 & Noise scale matrix 𝐖
 //                                     System noise covariance matrix 𝐐
@@ -2325,6 +2416,63 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF:
     return Q;
 }
 
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFStates, NAV::LooselyCoupledKF::KFStates, 17, 17>
+    NAV::LooselyCoupledKF::e_systemNoiseCovarianceMatrixBaroEst_Q(const Eigen::Vector3d& sigma2_ra, const Eigen::Vector3d& sigma2_rg,
+                                                                  const Eigen::Vector3d& sigma2_bad, const Eigen::Vector3d& sigma2_bgd,
+                                                                  const Eigen::Vector3d& tau_bad, const Eigen::Vector3d& tau_bgd,
+                                                                  const Eigen::Matrix3d& e_F_21,
+                                                                  const Eigen::Matrix3d& e_Dcm_b, const double& tau_s, double& sigma2_baroP, double& sigma2_baroT,
+                                                                  double& tau_baroP, double& tau_baroT)
+{
+    // Math: \mathbf{Q}_{INS}^e = \begin{pmatrix} \mathbf{Q}_{11} & {\mathbf{Q}_{21}^e}^T & {\mathbf{Q}_{31}^e}^T & \mathbf{0}_3 & {\mathbf{Q}_{51}^e}^T \\ \mathbf{Q}_{21}^e & \mathbf{Q}_{22}^e & {\mathbf{Q}_{32}^e}^T & {\mathbf{Q}_{42}^e}^T & \mathbf{Q}_{25}^e \\ \mathbf{Q}_{31}^e & \mathbf{Q}_{32}^e & \mathbf{Q}_{33}^e & \mathbf{Q}_{34}^e & \mathbf{Q}_{35}^e \\ \mathbf{0}_3 & \mathbf{Q}_{42}^e & {\mathbf{Q}_{34}^e}^T & S_{bad}\tau_s\mathbf{I}_3 & \mathbf{0}_3 \\ \mathbf{Q}_{51}^e & \mathbf{Q}_{52}^e & {\mathbf{Q}_{35}^e}^T & \mathbf{0}_3 & S_{bgd}\tau_s\mathbf{I}_3 \end{pmatrix} \qquad \text{P. Groves}\,(14.80)
+    Eigen::Vector3d S_ra = sigma2_ra * tau_s;
+    Eigen::Vector3d S_rg = sigma2_rg * tau_s;
+    Eigen::Vector3d S_bad = sigma2_bad.array() / tau_bad.array();
+    Eigen::Vector3d S_bgd = sigma2_bgd.array() / tau_bgd.array();
+
+    double S_baroP = sigma2_baroP / tau_baroP;
+    double S_baroT = sigma2_baroT / tau_baroT;
+
+    Eigen::Matrix3d b_Dcm_e = e_Dcm_b.transpose();
+
+    KeyedMatrix<double, KFStates, KFStates, 17, 17> Q(Eigen::Matrix<double, 17, 17>::Zero(), BaroErrorStates, BaroErrorStates);
+    Q.block<3>(Att, Att) = Q_psi_psi(S_rg, S_bgd, tau_s);                        // Q_11
+    Q.block<3>(Vel, Att) = ien_Q_dv_psi(S_rg, S_bgd, e_F_21, tau_s);             // Q_21
+    Q.block<3>(Vel, Vel) = ien_Q_dv_dv(S_ra, S_bad, S_rg, S_bgd, e_F_21, tau_s); // Q_22
+    Q.block<3>(Vel, GyrBias) = ien_Q_dv_domega(S_bgd, e_F_21, e_Dcm_b, tau_s);   // Q_25
+    Q.block<3>(Pos, Att) = ie_Q_dr_psi(S_rg, S_bgd, e_F_21, tau_s);              // Q_31
+    Q.block<3>(Pos, Vel) = ie_Q_dr_dv(S_ra, S_bad, S_rg, S_bgd, e_F_21, tau_s);  // Q_32
+    Q.block<3>(Pos, Pos) = ie_Q_dr_dr(S_ra, S_bad, S_rg, S_bgd, e_F_21, tau_s);  // Q_33
+    Q.block<3>(Pos, AccBias) = ie_Q_dr_df(S_bgd, e_Dcm_b, tau_s);                // Q_34
+    Q.block<3>(Pos, GyrBias) = ie_Q_dr_domega(S_bgd, e_F_21, e_Dcm_b, tau_s);    // Q_35
+    Q.block<3>(AccBias, Vel) = Q_df_dv(S_bad, b_Dcm_e, tau_s);                   // Q_42
+    Q.block<3>(AccBias, AccBias) = Q_df_df(S_bad, tau_s);                        // Q_44
+    Q.block<3>(GyrBias, Att) = Q_domega_psi(S_bgd, b_Dcm_e, tau_s);              // Q_51
+    Q.block<3>(GyrBias, GyrBias) = Q_domega_domega(S_bgd, tau_s);                // Q_55
+
+    Q.block<3>(Att, Vel) = Q.block<3>(Vel, Att).transpose();         // Q_21^T
+    Q.block<3>(Att, Pos) = Q.block<3>(Pos, Att).transpose();         // Q_31^T
+    Q.block<3>(Vel, Pos) = Q.block<3>(Pos, Vel).transpose();         // Q_32^T
+    Q.block<3>(AccBias, Pos) = Q.block<3>(Pos, AccBias).transpose(); // Q_34^T
+    Q.block<3>(GyrBias, Vel) = Q.block<3>(Vel, GyrBias).transpose(); // Q_25^T
+    Q.block<3>(GyrBias, Pos) = Q.block<3>(Pos, GyrBias).transpose(); // Q_35^T
+    Q.block<3>(Vel, AccBias) = Q.block<3>(AccBias, Vel).transpose(); // Q_42^T
+    Q.block<3>(Att, GyrBias) = Q.block<3>(GyrBias, Att).transpose(); // Q_51^T
+
+    Q(DeltaP, DeltaP) = S_baroP * tau_s;
+    Q(DeltaT, DeltaT) = S_baroT * tau_s;
+
+    Q.middleRows<3>(Att) *= SCALE_FACTOR_ATTITUDE;
+    Q.middleRows<3>(AccBias) *= SCALE_FACTOR_ACCELERATION;
+    Q.middleRows<3>(GyrBias) *= SCALE_FACTOR_ANGULAR_RATE;
+
+    Q.middleCols<3>(Att) *= SCALE_FACTOR_ATTITUDE;
+    Q.middleCols<3>(AccBias) *= SCALE_FACTOR_ACCELERATION;
+    Q.middleCols<3>(GyrBias) *= SCALE_FACTOR_ANGULAR_RATE;
+
+    return Q;
+}
+
 // ###########################################################################################################
 //                                         Error covariance matrix P
 // ###########################################################################################################
@@ -2471,6 +2619,25 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::K
     return H;
 }
 
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 17>
+    NAV::LooselyCoupledKF::e_baroEstMeasurementMatrix_H(const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate, double& _DeltaP, double& _DeltaT)
+{
+    double lat = lla_positionEstimate(0);
+    double lon = lla_positionEstimate(1);
+    Eigen::Vector3d n_poslocalFrame(lat, lon, 0);
+    Eigen::Vector3d e_poslocalFrame = trafo::lla2ecef_WGS84(n_poslocalFrame);
+    // LOG_DEBUG("e_poslocalFrame =\n{}", e_poslocalFrame);
+    Eigen::Vector3d e_positionEstimate_b = e_positionEstimate - e_poslocalFrame;
+
+    NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 1, 17> H(Eigen::Matrix<double, 1, 17>::Zero(), MeasBaro, BaroErrorStates);
+    H(dAltMsl, PosX) = -cos(lat) * cos(lon) - (_DeltaT * cos(lat) * cos(lon)) / T0 - (L * R * _DeltaP * cos(lat) * cos(lon)) / (P0 * g0);
+    H(dAltMsl, PosY) = -cos(lat) * sin(lon) - (_DeltaT * cos(lat) * sin(lon)) / T0 - (L * R * _DeltaP * cos(lat) * sin(lon)) / (P0 * g0);
+    H(dAltMsl, PosZ) = -sin(lat) - (_DeltaT * sin(lat)) / T0 - (L * R * _DeltaP * sin(lat)) / (P0 * g0);
+    H(dAltMsl, DeltaP) = -(sin(lat) * (e_positionEstimate_b(2)) + cos(lat) * cos(lon) * (e_positionEstimate_b(0)) + cos(lat) * sin(lon) * (e_positionEstimate_b(2))) / T0;
+    H(dAltMsl, DeltaT) = (R * (T0 - L * (sin(lat) * (e_positionEstimate_b(2)) + cos(lat) * cos(lon) * (e_positionEstimate_b(0)) + cos(lat) * sin(lon) * (e_positionEstimate_b(1))))) / (P0 * g0);
+    return H;
+}
+
 NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 6, 15>
     NAV::LooselyCoupledKF::e_measurementMatrix_H(const Eigen::Matrix3d& e_Dcm_b, const Eigen::Vector3d& b_omega_ib, const Eigen::Vector3d& b_leverArm_InsGnss, const Eigen::Matrix3d& e_Omega_ie)
 {
@@ -2478,6 +2645,30 @@ NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::K
     // G denotes GNSS indicated
 
     NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 6, 15> H(Eigen::Matrix<double, 6, 15>::Zero(), Meas, States);
+
+    // Math: \mathbf{H}_{r1}^e \approx \begin{bmatrix} \begin{pmatrix} \mathbf{C}_b^e \mathbf{l}_{ba}^p \end{pmatrix} \wedge \end{bmatrix} \qquad \text{P. Groves}\,(14.114)
+    H.block<3>(dPos, Att) = math::skewSymmetricMatrix(e_Dcm_b * b_leverArm_InsGnss);
+    H.block<3>(dPos, Pos) = -Eigen::Matrix3d::Identity();
+    // Math: \mathbf{H}_{v1}^e \approx \begin{bmatrix} \begin{Bmatrix} \mathbf{C}_b^e (\mathbf{\hat{\omega}}_{ib}^b \wedge \mathbf{l}_{ba}^b) - \mathbf{\hat{\Omega}}_{ie}^e \mathbf{C}_b^e \mathbf{l}_{ba}^b \end{Bmatrix} \wedge \end{bmatrix} \qquad \text{P. Groves}\,(14.114)
+    H.block<3>(dVel, Att) = math::skewSymmetricMatrix(e_Dcm_b * (b_omega_ib.cross(b_leverArm_InsGnss)) - e_Omega_ie * e_Dcm_b * b_leverArm_InsGnss);
+    H.block<3>(dVel, Vel) = -Eigen::Matrix3d::Identity();
+    // Math: \mathbf{H}_{v5}^e = \mathbf{C}_b^e \begin{bmatrix} \mathbf{l}_{ba}^b \wedge \end{bmatrix} \qquad \text{P. Groves}\,(14.114)
+    H.block<3>(dVel, GyrBias) = e_Dcm_b * math::skewSymmetricMatrix(b_leverArm_InsGnss);
+
+    H.middleCols<3>(Att) *= 1. / SCALE_FACTOR_ATTITUDE;
+    // H.middleCols<3>(AccBias) *= 1. / SCALE_FACTOR_ACCELERATION; // Only zero elements
+    H.middleCols<3>(GyrBias) *= 1. / SCALE_FACTOR_ANGULAR_RATE;
+
+    return H;
+}
+
+NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 6, 17>
+    NAV::LooselyCoupledKF::e_measurementMatrixBaroEst_H(const Eigen::Matrix3d& e_Dcm_b, const Eigen::Vector3d& b_omega_ib, const Eigen::Vector3d& b_leverArm_InsGnss, const Eigen::Matrix3d& e_Omega_ie)
+{
+    // Math: \mathbf{H}_{G,k}^e = \begin{pmatrix} \mathbf{H}_{r1}^e & \mathbf{0}_3 & -\mathbf{I}_3 & \mathbf{0}_3 & \mathbf{0}_3 \\ \mathbf{H}_{v1}^e & -\mathbf{I}_3 & \mathbf{0}_3 & \mathbf{0}_3 & \mathbf{H}_{v5}^e \end{pmatrix}_k \qquad \text{P. Groves}\,(14.113)
+    // G denotes GNSS indicated
+
+    NAV::KeyedMatrix<double, NAV::LooselyCoupledKF::KFMeas, NAV::LooselyCoupledKF::KFStates, 6, 17> H(Eigen::Matrix<double, 6, 17>::Zero(), Meas, BaroErrorStates);
 
     // Math: \mathbf{H}_{r1}^e \approx \begin{bmatrix} \begin{pmatrix} \mathbf{C}_b^e \mathbf{l}_{ba}^p \end{pmatrix} \wedge \end{bmatrix} \qquad \text{P. Groves}\,(14.114)
     H.block<3>(dPos, Att) = math::skewSymmetricMatrix(e_Dcm_b * b_leverArm_InsGnss);
@@ -2589,6 +2780,27 @@ NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
     double control = (z + x + y);
     // double heightest = trafo::ecef2lla_WGS84(e_positionEstimate)(2);
     double deltaAlt = baroHeightMeasurement - control + geoidHeight;
+
+    Eigen::Matrix<double, 1, 1> innovation;
+    innovation << deltaAlt;
+
+    return { innovation, MeasBaro };
+}
+
+NAV::KeyedVector<double, NAV::LooselyCoupledKF::KFMeas, 1>
+    NAV::LooselyCoupledKF::e_baroEstMeasurementInnovation_dz(const double baroHeightMeasurement, const Eigen::Vector3d& lla_positionEstimate, const Eigen::Vector3d& e_positionEstimate, double& _DeltaP, double& _DeltaT)
+{
+    // TODO
+    double lat = lla_positionEstimate(0);
+    double lon = lla_positionEstimate(1);
+    Eigen::Vector3d n_poslocalFrame(lat, lon, 0);
+    Eigen::Vector3d e_poslocalFrame = trafo::lla2ecef_WGS84(n_poslocalFrame);
+    // LOG_DEBUG("e_poslocalFrame =\n{}", e_poslocalFrame);
+    Eigen::Vector3d e_positionEstimate_b = e_positionEstimate - e_poslocalFrame;
+    double geoidHeight = egm96_compute_altitude_offset(lla_positionEstimate(0), lla_positionEstimate(1));
+
+    // double heightest = trafo::ecef2lla_WGS84(e_positionEstimate)(2);
+    double deltaAlt = baroHeightMeasurement + geoidHeight + sin(lat) * (e_positionEstimate_b(2)) + cos(lat) * cos(lon) * (e_positionEstimate_b(0)) + cos(lat) * sin(lon) * (e_positionEstimate_b(1)) + (_DeltaT * (sin(lat) * (e_positionEstimate_b(2)) + cos(lat) * cos(lon) * (e_positionEstimate_b(0)) + cos(lat) * sin(lon) * (e_positionEstimate_b(1)))) / T0 - (R * _DeltaP * (T0 - L * (sin(lat) * (e_positionEstimate_b(2)) + cos(lat) * cos(lon) * (e_positionEstimate_b(0)) + cos(lat) * sin(lon) * (e_positionEstimate_b(1))))) / (P0 * g0);
 
     Eigen::Matrix<double, 1, 1> innovation;
     innovation << deltaAlt;
