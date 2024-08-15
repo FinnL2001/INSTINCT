@@ -556,93 +556,123 @@ void NAV::LooselyCoupledKF::guiConfig()
         }
     }
 
-    if (ImGui::CollapsingHeader(fmt::format("Estimate Baro Principle Error##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
+    if (ImGui::CollapsingHeader(fmt::format("Estimate Baro Principal Error##{}", size_t(id)).c_str(), ImGuiTreeNodeFlags_DefaultOpen))
     {
-        if (ImGui::Checkbox(fmt::format("Principel Error (Pres and temp) Estimation?##{}", size_t(id)).c_str(), &_usePrincipelErrorEstimation))
+        if (ImGui::Checkbox(fmt::format("Principal Error (Pres and temp) Estimation?##{}", size_t(id)).c_str(), &_usePrincipelErrorEstimation))
         {
             updateExternalPvaInitPin();
             flow::ApplyChanges();
         }
         ImGui::SameLine();
-        gui::widgets::HelpMarker("Estimation of the Pricipel Error as Bias in the Kalman Start Values are Calculated automaticly from GPS height and Start Temperature");
-        if (_qCalculationAlgorithm == QCalculationAlgorithm::VanLoan)
+        gui::widgets::HelpMarker("Estimation of the Principal Error as Bias in the Kalman Start Values are Calculated automaticly from GPS height and Start Temperature");
+        ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
+        if (ImGui::TreeNode(fmt::format("Q - System/Process noise covariance matrix Principal Error Estimation Part##{}", size_t(id)).c_str()))
         {
-            ImGui::SetNextItemWidth(configWidth + ImGui::GetStyle().ItemSpacing.x);
-            if (ImGui::Combo(fmt::format("Random Process Barometer##{}", size_t(id)).c_str(), reinterpret_cast<int*>(&_randomProcessBaro), "Random Walk\0"
-                                                                                                                                           "Gauss-Markov 1st Order\0\0"))
+            if (_qCalculationAlgorithm == QCalculationAlgorithm::VanLoan)
             {
-                LOG_DEBUG("{}: randomProcessBaro changed to {}", nameId(), fmt::underlying(_randomProcessBaro));
-                flow::ApplyChanges();
+                ImGui::SetNextItemWidth(configWidth + ImGui::GetStyle().ItemSpacing.x);
+                if (ImGui::Combo(fmt::format("Random Process Barometer##{}", size_t(id)).c_str(), reinterpret_cast<int*>(&_randomProcessBaro), "Random Walk\0"
+                                                                                                                                               "Gauss-Markov 1st Order\0\0"))
+                {
+                    LOG_DEBUG("{}: randomProcessBaro changed to {}", nameId(), fmt::underlying(_randomProcessBaro));
+                    flow::ApplyChanges();
+                }
             }
-        }
 
-        if (gui::widgets::InputDoubleWithUnit(fmt::format("Standard deviation σ of the Baro Pres {}##{}",
-                                                          _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1
-                                                              ? "dynamic bias, in σ²/τ"
-                                                              : (_randomProcessBaro == RandomProcess::RandomWalk ? "bias noise" : "bias noise, in √(2σ²β)"),
-                                                          size_t(id))
-                                                  .c_str(),
-                                              configWidth, unitWidth, &_stdev_baroPres, reinterpret_cast<int*>(&_stdev_baroPres), "hPa\0\0"))
-        {
-            flow::ApplyChanges();
-        }
-
-        if (_randomProcessBaro == RandomProcess::GaussMarkov1 || _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1)
-        {
-            int unitCorrelationLength = 0;
-            if (gui::widgets::InputDoubleLWithUnit(fmt::format("Correlation length τ of the Baro Pres {}##Correlation length τ of the accel dynamic bias {}",
-                                                               _qCalculationAlgorithm == QCalculationAlgorithm::VanLoan ? "bias noise" : "dynamic bias", size_t(id))
-                                                       .c_str(),
-                                                   configWidth, unitWidth, &_tau_baroPres, 0., std::numeric_limits<double>::max(),
-                                                   &unitCorrelationLength, "s\0\0"))
+            if (gui::widgets::InputDoubleWithUnit(fmt::format("Standard deviation σ of the Baro Pres {}##{}",
+                                                              _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1
+                                                                  ? "dynamic bias, in σ²/τ"
+                                                                  : (_randomProcessBaro == RandomProcess::RandomWalk ? "bias noise" : "bias noise, in √(2σ²β)"),
+                                                              size_t(id))
+                                                      .c_str(),
+                                                  configWidth, unitWidth, &_stdev_baroPres, reinterpret_cast<int*>(&_stdev_baroPres), "hPa\0\0"))
             {
                 flow::ApplyChanges();
             }
-        }
-        if (gui::widgets::InputDoubleWithUnit(fmt::format("Standard deviation σ of the Baro Temp {}##{}",
-                                                          _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1
-                                                              ? "dynamic bias, in σ²/τ"
-                                                              : (_randomProcessBaro == RandomProcess::RandomWalk ? "bias noise" : "bias noise, in √(2σ²β)"),
-                                                          size_t(id))
-                                                  .c_str(),
-                                              configWidth, unitWidth, &_stdev_baroTemp, reinterpret_cast<int*>(&_stdev_baroTemp), "K\0\0"))
-        {
-            flow::ApplyChanges();
-        }
 
-        if (_randomProcessBaro == RandomProcess::GaussMarkov1 || _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1)
-        {
-            int unitCorrelationLength = 0;
-            if (gui::widgets::InputDoubleLWithUnit(fmt::format("Correlation length τ of the Baro Temp {}##Correlation length τ of the accel dynamic bias {}",
-                                                               _qCalculationAlgorithm == QCalculationAlgorithm::VanLoan ? "bias noise" : "dynamic bias", size_t(id))
-                                                       .c_str(),
-                                                   configWidth, unitWidth, &_tau_baroTemp, 0., std::numeric_limits<double>::max(),
-                                                   &unitCorrelationLength, "s\0\0"))
+            if (_randomProcessBaro == RandomProcess::GaussMarkov1 || _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1)
+            {
+                int unitCorrelationLength = 0;
+                if (gui::widgets::InputDoubleLWithUnit(fmt::format("Correlation length τ of the Baro Pres {}##Correlation length τ of the accel dynamic bias {}",
+                                                                   _qCalculationAlgorithm == QCalculationAlgorithm::VanLoan ? "bias noise" : "dynamic bias", size_t(id))
+                                                           .c_str(),
+                                                       configWidth, unitWidth, &_tau_baroPres, 0., std::numeric_limits<double>::max(),
+                                                       &unitCorrelationLength, "s\0\0"))
+                {
+                    flow::ApplyChanges();
+                }
+            }
+            if (gui::widgets::InputDoubleWithUnit(fmt::format("Standard deviation σ of the Baro Temp {}##{}",
+                                                              _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1
+                                                                  ? "dynamic bias, in σ²/τ"
+                                                                  : (_randomProcessBaro == RandomProcess::RandomWalk ? "bias noise" : "bias noise, in √(2σ²β)"),
+                                                              size_t(id))
+                                                      .c_str(),
+                                                  configWidth, unitWidth, &_stdev_baroTemp, reinterpret_cast<int*>(&_stdev_baroTemp), "K\0\0"))
             {
                 flow::ApplyChanges();
             }
+
+            if (_randomProcessBaro == RandomProcess::GaussMarkov1 || _qCalculationAlgorithm == QCalculationAlgorithm::Taylor1)
+            {
+                int unitCorrelationLength = 0;
+                if (gui::widgets::InputDoubleLWithUnit(fmt::format("Correlation length τ of the Baro Temp {}##Correlation length τ of the accel dynamic bias {}",
+                                                                   _qCalculationAlgorithm == QCalculationAlgorithm::VanLoan ? "bias noise" : "dynamic bias", size_t(id))
+                                                           .c_str(),
+                                                       configWidth, unitWidth, &_tau_baroTemp, 0., std::numeric_limits<double>::max(),
+                                                       &unitCorrelationLength, "s\0\0"))
+                {
+                    flow::ApplyChanges();
+                }
+            }
+
+            ImGui::TreePop();
         }
-        if (gui::widgets::InputDoubleWithUnit(fmt::format("Baro Pres Bias covariance ({})##{}",
-                                                          _initCovarianceBiasBaroPresUnit == InitCovarianceBiasBaroPresUnit::hPa2
-                                                              ? "Variance σ²"
-                                                              : "Standard deviation σ",
-                                                          size_t(id))
-                                                  .c_str(),
-                                              configWidth, unitWidth, &_initCovarianceBiasBaroPres, reinterpret_cast<int*>(&_initCovarianceBiasBaroPresUnit), "hPa2\0\0"
-                                                                                                                                                              "hPa\0\0"))
+        ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
+        if (ImGui::TreeNode(fmt::format("P Error covariance matrix (init) Principal Error Estimation Part##{}", size_t(id)).c_str()))
         {
-            flow::ApplyChanges();
+            if (gui::widgets::InputDoubleWithUnit(fmt::format("Baro Pres Bias covariance ({})##{}",
+                                                              _initCovarianceBiasBaroPresUnit == InitCovarianceBiasBaroPresUnit::hPa2
+                                                                  ? "Variance σ²"
+                                                                  : "Standard deviation σ",
+                                                              size_t(id))
+                                                      .c_str(),
+                                                  configWidth, unitWidth, &_initCovarianceBiasBaroPres, reinterpret_cast<int*>(&_initCovarianceBiasBaroPresUnit), "hPa2\0\0"
+                                                                                                                                                                  "hPa\0\0"))
+            {
+                flow::ApplyChanges();
+            }
+            if (gui::widgets::InputDoubleWithUnit(fmt::format("Baro Temp Bias covariance ({})##{}",
+                                                              _initCovarianceBiasBaroTempUnit == InitCovarianceBiasBaroTempUnit::K2
+                                                                  ? "Variance σ²"
+                                                                  : "Standard deviation σ",
+                                                              size_t(id))
+                                                      .c_str(),
+                                                  configWidth, unitWidth, &_initCovarianceBiasBaroTemp, reinterpret_cast<int*>(&_initCovarianceBiasBaroTempUnit), "K2\0\0"
+                                                                                                                                                                  "K\0\0"))
+            {
+                flow::ApplyChanges();
+            }
+            ImGui::TreePop();
         }
-        if (gui::widgets::InputDoubleWithUnit(fmt::format("Baro Temp Bias covariance ({})##{}",
-                                                          _initCovarianceBiasBaroTempUnit == InitCovarianceBiasBaroTempUnit::K2
-                                                              ? "Variance σ²"
-                                                              : "Standard deviation σ",
-                                                          size_t(id))
-                                                  .c_str(),
-                                              configWidth, unitWidth, &_initCovarianceBiasBaroTemp, reinterpret_cast<int*>(&_initCovarianceBiasBaroTempUnit), "K2\0\0"
-                                                                                                                                                              "K\0\0"))
+        ImGui::SetNextItemOpen(false, ImGuiCond_FirstUseEver);
+        if (ImGui::TreeNode(fmt::format("Bias init Principal Error Estimation Part##{}", size_t(id)).c_str()))
         {
-            flow::ApplyChanges();
+            if (ImGui::Checkbox(fmt::format("Use Gui Init Inputs?##{}", size_t(id)).c_str(), &_useBaroEstInitGui))
+            {
+                updateExternalPvaInitPin();
+                flow::ApplyChanges();
+            }
+            if (ImGui::InputDouble("Temp Bias [K]", &_deltaT_Gui_start, 0.01f, 1.0f, "%.8f"))
+            {
+                flow::ApplyChanges();
+            }
+            if (ImGui::InputDouble("Pres Bias [hPa]", &_deltaP_Gui_start, 0.01f, 1.0f, "%.8f"))
+            {
+                flow::ApplyChanges();
+            }
+
+            ImGui::TreePop();
         }
     }
 }
@@ -695,8 +725,11 @@ void NAV::LooselyCoupledKF::guiConfig()
     j["tau_baroPres"] = _tau_baroPres;
     j["tau_baroTemp"] = _tau_baroTemp;
     j["randomProcessBaro"] = _randomProcessBaro;
-    j["_initCovarianceBiasBaroPres"] = _initCovarianceBiasBaroPres;
-    j["_initCovarianceBiasBaroTemp"] = _initCovarianceBiasBaroTemp;
+    j["initCovarianceBiasBaroPres"] = _initCovarianceBiasBaroPres;
+    j["initCovarianceBiasBaroTemp"] = _initCovarianceBiasBaroTemp;
+    j["useBaroEstInitGui"] = _useBaroEstInitGui;
+    j["deltaT_Gui_start"] = _deltaT_Gui_start;
+    j["deltaP_Gui_start"] = _deltaP_Gui_start;
 
     j["initCovariancePositionUnit"] = _initCovariancePositionUnit;
     j["initCovariancePosition"] = _initCovariancePosition;
@@ -879,6 +912,19 @@ void NAV::LooselyCoupledKF::restore(json const& j)
     {
         j.at("initCovarianceBiasBaroPres").get_to(_initCovarianceBiasBaroPres);
     }
+    if (j.contains("useBaroEstInitGui"))
+    {
+        j.at("useBaroEstInitGui").get_to(_useBaroEstInitGui);
+    }
+    if (j.contains("deltaP_Gui_start"))
+    {
+        j.at("deltaP_Gui_start").get_to(_deltaP_Gui_start);
+    }
+    if (j.contains("deltaT_Gui_start"))
+    {
+        j.at("deltaT_Gui_start").get_to(_deltaT_Gui_start);
+    }
+
     // -------------------------------------- 𝐏 Error covariance matrix -----------------------------------------
     if (j.contains("initCovariancePositionUnit"))
     {
@@ -1165,14 +1211,26 @@ void NAV::LooselyCoupledKF::recvImuObservation(InputPin::NodeDataQueue& queue, s
     if (_getPstart && _lastImuObs->airPressureUncomp.has_value())
     {
         _Pstart = _lastImuObs->getValueAt(11).value();
+        LOG_DEBUG("{}: _Heightstart_Msl=\n{}", nameId(), _Heightstart_Msl);
         double T0_real = calcMeanSeaLevelTemp(_Heightstart_Msl, _Tstart);
+        LOG_DEBUG("{}: T0start=\n{}", nameId(), T0_real);
         _deltaP_start = calcMeanSeaLevelPressure(_Heightstart_Msl, _Pstart, T0_real) - P0;
         _deltaT_start = T0_real - T0;
 
         if (_usePrincipelErrorEstimation)
         {
-            _kalmanFilter.x(DeltaP) = _deltaP_start;
-            _kalmanFilter.x(DeltaT) = _deltaT_start;
+            LOG_DEBUG("{}: deltaPstart=\n{}", nameId(), _deltaP_start);
+            LOG_DEBUG("{}: deltaTstart=\n{}", nameId(), _deltaT_start);
+            if (_useBaroEstInitGui)
+            {
+                _kalmanFilter.x(DeltaP) = _deltaP_Gui_start;
+                _kalmanFilter.x(DeltaT) = _deltaT_Gui_start;
+            }
+            else
+            {
+                _kalmanFilter.x(DeltaP) = _deltaP_start;
+                _kalmanFilter.x(DeltaT) = _deltaT_start;
+            }
         }
         _getPstart = false;
     }
@@ -1232,6 +1290,7 @@ void NAV::LooselyCoupledKF::recvPosVelObservation(InputPin::NodeDataQueue& queue
 
         _inertialIntegrator.setInitialState(posVelAtt);
         Eigen::Vector3d pos = posVelAtt.lla_position();
+        LOG_DEBUG("{}: posstart=\n{}", nameId(), pos(2));
         _Heightstart_Msl = posVelAtt.altitude() - egm96_compute_altitude_offset(pos(0), pos(1));
         LOG_DATA("{}:   e_position   = {}", nameId(), posVelAtt.e_position().transpose());
         LOG_DATA("{}:   e_velocity   = {}", nameId(), posVelAtt.e_velocity().transpose());
